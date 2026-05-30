@@ -2,44 +2,73 @@ name: Daily Market AI (FRED)
 
 on:
   schedule:
-    - cron: '0 23 * * *'  # JST 08:00
+    # JST 08:00（= UTC 23:00）
+    - cron: '0 23 * * *'
   workflow_dispatch:
 
 jobs:
   run-market-ai:
     runs-on: ubuntu-latest
 
-    steps:
-      # ① リポジトリ取得
-      - name: リポジトリ取得
-        uses: actions/checkout@v4
+    # ✅ Node24強制（警告回避 & 将来互換）
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
-      # ② Pythonセットアップ
-      - name: Pythonセットアップ
-        uses: actions/setup-python@v5
+    steps:
+      # =========================
+      # ① リポジトリ取得
+      # =========================
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # =========================
+      # ② Python セットアップ
+      # =========================
+      - name: Setup Python
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+          cache: "pip"
 
+      # =========================
       # ③ ライブラリインストール
-      - name: ライブラリインストール
+      # =========================
+      - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # ④ Market AI 実行（FRED版）
+      # =========================
+      # ④ Market AI 実行
+      # =========================
       - name: Run Market AI
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           TO_EMAIL: ${{ secrets.TO_EMAIL }}
         run: |
+          echo "----- START MARKET AI -----"
           python main.py
+          echo "----- END MARKET AI -----"
 
-      # ⑤ CSVログをコミット
-      - name: CSVをGitに追加
+      # =========================
+      # ⑤ HTMLログ保存（確認用）
+      # =========================
+      - name: Upload HTML report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-ai-html
+          path: market_ai_latest_report.html
+
+      # =========================
+      # ⑥ CSVログコミット
+      # =========================
+      - name: Commit CSV logs
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
@@ -49,7 +78,9 @@ jobs:
 
           git diff --cached --quiet || git commit -m "Update CSV logs $(date +'%Y-%m-%d %H:%M')"
 
-      # ⑥ push
-      - name: push
+      # =========================
+      # ⑦ push（失敗しても止めない）
+      # =========================
+      - name: Push changes
         run: |
-          git push
+          git push || echo "push skipped"
