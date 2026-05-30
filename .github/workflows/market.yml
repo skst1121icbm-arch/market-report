@@ -1,8 +1,8 @@
-name: Daily Market AI
+name: Daily Market AI (FRED)
 
 on:
   schedule:
-    - cron: '0 23 * * *'  # JST 8:00
+    - cron: '0 23 * * *'  # JST 08:00
   workflow_dispatch:
 
 jobs:
@@ -10,21 +10,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ① リポジトリ取得
       - name: リポジトリ取得
         uses: actions/checkout@v4
 
+      # ② Pythonセットアップ
       - name: Pythonセットアップ
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
+      # ③ ライブラリインストール
       - name: ライブラリインストール
         run: |
           pip install -r requirements.txt
 
-      - name: Market AI実行
+      # ④ Market AI 実行（FRED版）
+      - name: Run Market AI
         env:
-          RAPID_API_KEY: ${{ secrets.RAPID_API_KEY }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
@@ -34,6 +38,7 @@ jobs:
         run: |
           python main.py
 
+      # ⑤ CSVログをコミット
       - name: CSVをGitに追加
         run: |
           git config user.name "GitHub Actions"
@@ -44,6 +49,7 @@ jobs:
 
           git diff --cached --quiet || git commit -m "Update CSV logs $(date +'%Y-%m-%d %H:%M')"
 
+      # ⑥ push
       - name: push
         run: |
           git push
