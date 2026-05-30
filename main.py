@@ -166,7 +166,6 @@ def get_recent_economic_events():
 
     try:
         df = investpy.economic_calendar(
-            time_zone="GMT +09:00",
             time_filter="time_only",
             importances=["high"],
             countries=None,
