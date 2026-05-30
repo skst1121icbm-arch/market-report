@@ -1,2 +1,3 @@
 ﻿run_timestamp_jst,score,regime,signal,nikkei_change_pct,dow_change_pct,nasdaq_change_pct,sp500_change_pct,vix_change_pct,tnx_change_pct,gold_change_pct,btc_change_pct,usdjpy_change_pct,top_sector_1,top_sector_2,top_sector_3,laggard_sector_1,laggard_sector_2,top_recent_event,top_recent_event_impact,top_upcoming_event,top_upcoming_event_impact,reason_1,reason_2,reason_3,reason_4,reason_5
 2026-05-31 03:48:41,5,強めのリスクオン,研究用シグナル: Growth優位,2.53,0.72,0.2,0.22,-2.67,-0.04,1.36,0.75,-0.01,テクノロジー,金融,素材,ヘルスケア,公益,,,,,日経平均が上昇,NYダウが上昇,NASDAQが上昇,S&P500が上昇,VIXが低下
+2026-05-31 04:19:10,5,強めのリスクオン,Growth優位,2.53,0.72,0.2,0.22,-2.67,-0.04,1.36,0.78,-0.01,テクノロジー,金融,素材,ヘルスケア,公益,,,,,日経平均が上昇,NYダウが上昇,NASDAQが上昇,S&P500が上昇,VIXが低下
