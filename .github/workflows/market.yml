@@ -2,7 +2,7 @@ name: Market Report
 
 on:
   schedule:
-    - cron: '0 22 * * *'   # 07:00 JST
+    - cron: '0 22 * * *'   # JST 07:00
   workflow_dispatch:
 
 jobs:
