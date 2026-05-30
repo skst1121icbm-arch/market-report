@@ -37,7 +37,8 @@ SECTOR_ETFS = {
 
 # FRED
 FRED_BASE_URL = "https://api.stlouisfed.org/fred"
-# 重要イベントとして注目する release 名（提案実装）
+
+# 重要イベントとして注目する release 名
 MAJOR_RELEASE_KEYWORDS = [
     "Consumer Price Index",
     "Gross Domestic Product",
@@ -57,9 +58,56 @@ MAJOR_RELEASE_KEYWORDS = [
     "Selected Interest Rates",
 ]
 
+# 米国 release 名 → 結果取得用 FRED series_id の簡易対応表
+US_RELEASE_SERIES_MAP = {
+    "Consumer Price Index": {
+        "series_id": "CPIAUCSL",
+        "result_label": "CPI"
+    },
+    "Gross Domestic Product": {
+        "series_id": "A191RL1Q225SBEA",
+        "result_label": "GDP"
+    },
+    "Employment Situation": {
+        "series_id": "PAYEMS",
+        "result_label": "非農業部門雇用者数"
+    },
+    "Producer Price Index": {
+        "series_id": "PPIACO",
+        "result_label": "PPI"
+    },
+    "Retail Sales": {
+        "series_id": "RSAFS",
+        "result_label": "小売売上高"
+    },
+    "Industrial Production": {
+        "series_id": "INDPRO",
+        "result_label": "鉱工業生産"
+    },
+    "Unemployment": {
+        "series_id": "UNRATE",
+        "result_label": "失業率"
+    },
+    "Job Openings and Labor Turnover": {
+        "series_id": "JTSJOL",
+        "result_label": "JOLTS求人件数"
+    },
+    "Initial Claims": {
+        "series_id": "ICSA",
+        "result_label": "新規失業保険申請件数"
+    },
+    "Personal Income and Outlays": {
+        "series_id": "PCE",
+        "result_label": "PCE"
+    },
+}
+
 # CSV保存先
 DAILY_LOG_FILE = "market_ai_daily_log.csv"
 EVENT_LOG_FILE = "market_ai_event_log.csv"
+
+# エラーログ
+ERROR_LOG_FILE = "market_ai_error.log"
 
 
 # =========================================================
@@ -91,6 +139,51 @@ def safe_float(v):
         return float(v)
     except Exception:
         return None
+
+
+def log_error(msg, file_path=ERROR_LOG_FILE):
+    try:
+        with open(file_path, "a", encoding="utf-8") as f:
+            f.write(f"{now_jst().strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
+    except Exception:
+        pass
+
+
+def safe_execute(label, func, default=None):
+    try:
+        return func(), None
+    except Exception as e:
+        err = f"{label} エラー: {e}"
+        log_error(err)
+        return default, err
+
+
+def is_monday():
+    return now_jst().weekday() == 0
+
+
+def importance_to_stars(label):
+    if label == "高":
+        return 3
+    if label == "中":
+        return 2
+    return 1
+
+
+def within_last_24h(dt):
+    now = now_jst()
+    return (now - timedelta(hours=24)) <= dt <= now
+
+
+def within_next_24h(dt):
+    now = now_jst()
+    return now < dt <= (now + timedelta(hours=24))
+
+
+def within_this_week(dt):
+    today = now_jst().date()
+    week_end = today + timedelta(days=6)
+    return today <= dt.date() <= week_end
 
 
 # =========================================================
@@ -181,9 +274,62 @@ def fred_get(path, params=None):
     return res.json()
 
 
+def is_major_release(release_name):
+    s = str(release_name)
+    return any(k.lower() in s.lower() for k in MAJOR_RELEASE_KEYWORDS)
+
+
+def parse_date_only(date_str):
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=JST)
+    except Exception:
+        return None
+
+
+def infer_importance_label(release_name):
+    s = release_name.lower()
+    if any(k.lower() in s for k in [
+        "Consumer Price Index",
+        "Gross Domestic Product",
+        "Employment Situation",
+        "Producer Price Index",
+        "Personal Income and Outlays",
+    ]):
+        return "高"
+    if any(k.lower() in s for k in [
+        "Retail Sales",
+        "Industrial Production",
+        "Job Openings and Labor Turnover",
+        "Employment Cost Index",
+        "Housing Starts",
+        "Initial Claims",
+    ]):
+        return "中"
+    return "低"
+
+
+def calc_fred_event_impact_score(release_name, event_dt, status):
+    importance = infer_importance_label(release_name)
+    base = {"高": 8.0, "中": 5.5, "低": 3.0}.get(importance, 3.0)
+
+    days_diff = abs((event_dt.date() - now_jst().date()).days)
+
+    if days_diff == 0:
+        proximity_bonus = 2.0
+    elif days_diff == 1:
+        proximity_bonus = 1.2
+    elif days_diff == 2:
+        proximity_bonus = 0.7
+    else:
+        proximity_bonus = 0.2
+
+    score = min(10.0, round(base + proximity_bonus, 2))
+    return score
+
+
 def fetch_fred_release_dates():
     """
-    FRED の fred/releases/dates を取得し、注目release名で絞る提案実装。
+    FRED の fred/releases/dates を取得し、注目release名で絞る
     """
     try:
         data = fred_get(
@@ -204,7 +350,6 @@ def fetch_fred_release_dates():
         release_id = item.get("release_id", "")
         date_str = item.get("date", "")
 
-        # 重要リリース名だけ通す（提案実装）
         if not is_major_release(release_name):
             continue
 
@@ -213,6 +358,7 @@ def fetch_fred_release_dates():
             continue
 
         status = "upcoming" if event_dt.date() >= now_jst().date() else "recent"
+        importance_label = infer_importance_label(release_name)
         impact_score = calc_fred_event_impact_score(release_name, event_dt, status)
 
         events.append({
@@ -221,12 +367,13 @@ def fetch_fred_release_dates():
             "event_dt": event_dt,
             "event_dt_text": event_dt.strftime("%Y-%m-%d"),
             "status": status,
-            "importance_label": infer_importance_label(release_name),
+            "importance_label": importance_label,
             "impact_score": impact_score,
             "country": "US",
+            "stars": importance_to_stars(importance_label),
+            "result": None,
         })
 
-    # 直近2日〜先7日だけ使う
     today = now_jst().date()
     min_date = today - timedelta(days=2)
     max_date = today + timedelta(days=7)
@@ -237,66 +384,6 @@ def fetch_fred_release_dates():
             filtered.append(e)
 
     return filtered, None
-
-
-def is_major_release(release_name):
-    s = str(release_name)
-    return any(k.lower() in s.lower() for k in MAJOR_RELEASE_KEYWORDS)
-
-
-def parse_date_only(date_str):
-    try:
-        return datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=JST)
-    except Exception:
-        return None
-
-
-def infer_importance_label(release_name):
-    """
-    release名ベースの提案実装
-    """
-    s = release_name.lower()
-    if any(k.lower() in s for k in [
-        "Consumer Price Index",
-        "Gross Domestic Product",
-        "Employment Situation",
-        "Producer Price Index",
-        "Personal Income and Outlays",
-    ]):
-        return "高"
-    if any(k.lower() in s for k in [
-        "Retail Sales",
-        "Industrial Production",
-        "Job Openings and Labor Turnover",
-        "Employment Cost Index",
-        "Housing Starts",
-    ]):
-        return "中"
-    return "低"
-
-
-def calc_fred_event_impact_score(release_name, event_dt, status):
-    """
-    FRED向けイベント影響度スコア（提案ロジック）
-    - release_name で基礎点
-    - 近い日付ほど加点
-    """
-    importance = infer_importance_label(release_name)
-    base = {"高": 8.0, "中": 5.5, "低": 3.0}.get(importance, 3.0)
-
-    days_diff = abs((event_dt.date() - now_jst().date()).days)
-
-    if days_diff == 0:
-        proximity_bonus = 2.0
-    elif days_diff == 1:
-        proximity_bonus = 1.2
-    elif days_diff == 2:
-        proximity_bonus = 0.7
-    else:
-        proximity_bonus = 0.2
-
-    score = min(10.0, round(base + proximity_bonus, 2))
-    return score
 
 
 def split_fred_events(events):
@@ -318,6 +405,104 @@ def split_fred_events(events):
 
 
 # =========================================================
+# 追加：米国イベント結果取得
+# =========================================================
+def fetch_fred_latest_result(series_id):
+    try:
+        data = fred_get(
+            "series/observations",
+            {
+                "series_id": series_id,
+                "sort_order": "desc",
+                "limit": 2,
+            }
+        )
+        obs = data.get("observations", [])
+        vals = [o for o in obs if o.get("value") not in [None, ".", "NaN", "nan"]]
+        if not vals:
+            return None
+
+        latest = safe_float(vals[0].get("value"))
+        prev = safe_float(vals[1].get("value")) if len(vals) > 1 else None
+
+        if latest is None:
+            return None
+
+        if prev is None:
+            return f"{latest:.2f}"
+
+        diff = latest - prev
+        return f"{latest:.2f}（前回 {prev:.2f} / 差 {diff:+.2f}）"
+    except Exception as e:
+        log_error(f"FRED結果取得エラー {series_id}: {e}")
+        return None
+
+
+def enrich_us_events_with_results(events):
+    enriched = []
+    for e in events:
+        x = dict(e)
+        x["result"] = None
+
+        mapping = US_RELEASE_SERIES_MAP.get(x["name"])
+        if mapping:
+            result_text = fetch_fred_latest_result(mapping["series_id"])
+            if result_text:
+                x["result"] = f"{mapping['result_label']}: {result_text}"
+
+        enriched.append(x)
+    return enriched
+
+
+def build_us_macro_email_payload(us_events):
+    """
+    月曜:
+      - 米国 ★2以上
+      - 今週の予定
+    月曜以外:
+      - 過去24時間の発表済み結果
+      - 今後24時間の発表予定
+    """
+    if is_monday():
+        weekly = []
+        for e in us_events:
+            if not within_this_week(e["event_dt"]):
+                continue
+            if e["stars"] >= 2:
+                weekly.append(e)
+
+        weekly = sorted(weekly, key=lambda x: x["event_dt"])
+        return {
+            "mode": "monday",
+            "weekly": weekly,
+            "past_24h": [],
+            "next_24h": [],
+        }
+
+    past_24h = []
+    next_24h = []
+
+    for e in us_events:
+        if e["stars"] < 2:
+            continue
+
+        if within_last_24h(e["event_dt"]):
+            past_24h.append(e)
+        elif within_next_24h(e["event_dt"]):
+            next_24h.append(e)
+
+    past_24h = sorted(past_24h, key=lambda x: x["event_dt"], reverse=True)
+    next_24h = sorted(next_24h, key=lambda x: x["event_dt"])
+
+    return {
+        "mode": "normal",
+        "weekly": [],
+        "past_24h": past_24h,
+        "next_24h": next_24h,
+    }
+
+
+# =========================================================
 # レジーム / 研究用シグナル
 # =========================================================
 def score_market(market_rows, sector_rows, recent_events, upcoming_events):
@@ -326,7 +511,6 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
 
     lookup = {r["label"]: r for r in market_rows}
 
-    # 株価指数
     for key in ["日経平均", "NYダウ", "NASDAQ", "S&P500"]:
         item = lookup.get(key)
         if item and item["change_pct"] is not None:
@@ -337,7 +521,6 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
                 score -= 1
                 reasons.append(f"{key}が下落")
 
-    # VIX
     vix = lookup.get("VIX")
     if vix and vix["change_pct"] is not None:
         if vix["change_pct"] < 0:
@@ -347,7 +530,6 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
             score -= 1
             reasons.append("VIXが上昇")
 
-    # 米10年金利
     tnx = lookup.get("米10年金利")
     if tnx and tnx["change_pct"] is not None:
         if tnx["change_pct"] < 0:
@@ -357,7 +539,6 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
             score -= 1
             reasons.append("米10年金利が上昇")
 
-    # GOLD
     gold = lookup.get("GOLD (USD)")
     if gold and gold["change_pct"] is not None:
         if gold["change_pct"] < 0:
@@ -367,7 +548,6 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
             score -= 1
             reasons.append("GOLDが上昇")
 
-    # BTC
     btc = lookup.get("BTC (USD)")
     if btc and btc["change_pct"] is not None:
         if btc["change_pct"] > 0:
@@ -377,7 +557,6 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
             score -= 1
             reasons.append("BTCが下落")
 
-    # USD/JPY
     usdjpy = lookup.get("USD/JPY")
     if usdjpy and usdjpy["change_pct"] is not None:
         if usdjpy["change_pct"] > 0:
@@ -387,7 +566,6 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
             score -= 1
             reasons.append("USD/JPYが低下")
 
-    # セクター
     sector_attention = summarize_sector_attention(sector_rows)
     if sector_attention["leaders"]:
         reasons.append(
@@ -402,7 +580,6 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
             )
         )
 
-    # FREDイベントは「予定リスク」として反映（提案実装）
     risky_upcoming = [e for e in upcoming_events if e["impact_score"] >= 8.5]
     if len(risky_upcoming) >= 2:
         score -= 1
@@ -531,7 +708,9 @@ def generate_ai_summary(market_rows, sector_rows, recent_events, upcoming_events
         text = res.output[0].content[0].text.strip()
         return text.replace("。", "。<br><br>")
     except Exception as e:
-        return f"AI概況の生成中にエラーが発生しました: {e}"
+        err = f"AI概況の生成中にエラーが発生しました: {e}"
+        log_error(err)
+        return err
 
 
 # =========================================================
@@ -708,6 +887,9 @@ def signal_badge(signal, details):
 
 
 def build_market_table(rows):
+    if not rows:
+        return "<p>データなし</p>"
+
     html_rows = []
     for r in rows:
         html_rows.append(f"""
@@ -761,7 +943,67 @@ def build_fred_event_table(events, title):
     """
 
 
-def build_html(market_rows, sector_rows, recent_events, upcoming_events, score, regime, signal, signal_details, reasons, ai_summary):
+def build_macro_schedule_table(events, title, show_result=False):
+    if not events:
+        return f"<h3>{title}</h3><p>該当なし</p>"
+
+    rows = []
+    for e in events:
+        result_col = e.get("result") if show_result else ""
+        rows.append(f"""
+        <tr>
+            <td style="padding:8px 10px;border-bottom:1px solid #ddd;">{e['event_dt_text']}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #ddd;">{e['country']}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #ddd;text-align:center;">★{e['stars']}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #ddd;">{e['name']}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #ddd;">{result_col if result_col else ''}</td>
+        </tr>
+        """)
+
+    return f"""
+    <h3 style="margin-top:16px;margin-bottom:8px;">{title}</h3>
+    <table style="border-collapse:collapse;width:100%;max-width:1100px;font-size:13px;">
+        <tr style="background:#f4f6f8;">
+            <th style="padding:10px;text-align:left;border-bottom:2px solid #ccc;">日時</th>
+            <th style="padding:10px;text-align:left;border-bottom:2px solid #ccc;">国</th>
+            <th style="padding:10px;text-align:center;border-bottom:2px solid #ccc;">重要度</th>
+            <th style="padding:10px;text-align:left;border-bottom:2px solid #ccc;">指標</th>
+            <th style="padding:10px;text-align:left;border-bottom:2px solid #ccc;">結果</th>
+        </tr>
+        {''.join(rows)}
+    </table>
+    """
+
+
+def build_macro_html(payload):
+    if payload["mode"] == "monday":
+        return f"""
+        <h3 style="margin-top:24px;margin-bottom:8px;">🗓️ 今週の重要経済指標</h3>
+        <p>月曜版：米国 ★2以上の今週発表予定</p>
+        {build_macro_schedule_table(payload["weekly"], "今週の発表予定", show_result=False)}
+        """
+
+    return f"""
+    <h3 style="margin-top:24px;margin-bottom:8px;">🗓️ 重要経済指標（24時間基準）</h3>
+    <p>月曜以外：過去24時間の発表済み結果 / 今後24時間の発表予定</p>
+    {build_macro_schedule_table(payload["past_24h"], "過去24時間に発表済み", show_result=True)}
+    {build_macro_schedule_table(payload["next_24h"], "今後24時間に発表予定", show_result=False)}
+    """
+
+
+def build_html(
+    market_rows,
+    sector_rows,
+    recent_events,
+    upcoming_events,
+    score,
+    regime,
+    signal,
+    signal_details,
+    reasons,
+    ai_summary,
+    macro_html
+):
     today = now_jst().strftime("%Y-%m-%d")
     sector_attention = summarize_sector_attention(sector_rows)
 
@@ -790,6 +1032,8 @@ def build_html(market_rows, sector_rows, recent_events, upcoming_events, score, 
         <h4 style="margin-top:16px;margin-bottom:6px;">📌 下位セクター</h4>
         <p>{laggards_html}</p>
 
+        {macro_html}
+
         <h3 style="margin-top:24px;margin-bottom:8px;">🗓️ FREDベースの主要リリース候補</h3>
         {build_fred_event_table(recent_events, "直近の主要リリース候補")}
         {build_fred_event_table(upcoming_events, "今後の主要リリース候補")}
@@ -804,7 +1048,8 @@ def build_html(market_rows, sector_rows, recent_events, upcoming_events, score, 
         <p>daily: {DAILY_LOG_FILE}<br>events: {EVENT_LOG_FILE}</p>
 
         <p style="margin-top:18px;color:#666;font-size:12px;">
-            ※ FRED版では release dates ベースでイベントを扱っています。
+            ※ 日本の指標は除外しています。<br>
+            ※ 米国イベントは FRED の release dates と series observations を用いています。
         </p>
     </body>
     </html>
@@ -821,12 +1066,15 @@ def send_mail(subject, html):
     smtp_pass = os.getenv("SMTP_PASS")
     to_email = os.getenv("TO_EMAIL")
 
+    if not smtp_host or not smtp_user or not smtp_pass or not to_email:
+        raise ValueError("SMTP設定が不足しています。SMTP_HOST/SMTP_USER/SMTP_PASS/TO_EMAIL を確認してください。")
+
     msg = MIMEText(html, "html", "utf-8")
     msg["Subject"] = subject
     msg["From"] = formataddr(("Market AI", smtp_user))
     msg["To"] = to_email
 
-    with smtplib.SMTP(smtp_host, smtp_port) as server:
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
         server.starttls()
         server.login(smtp_user, smtp_pass)
         server.send_message(msg)
@@ -836,80 +1084,181 @@ def send_mail(subject, html):
 # 実行
 # =========================================================
 def main():
-    # 1) 市場
-    market_df = download_ohlc(list(MARKET_SYMBOLS.values()))
-    sector_df = download_ohlc(list(SECTOR_ETFS.values()))
-    market_rows = build_rows(market_df, MARKET_SYMBOLS)
-    sector_rows = build_rows(sector_df, SECTOR_ETFS)
+    errors = []
 
-    # 2) FRED release dates
-    fred_events, fred_error = fetch_fred_release_dates()
+    # 1) 市場
+    def _fetch_market():
+        market_df = download_ohlc(list(MARKET_SYMBOLS.values()))
+        sector_df = download_ohlc(list(SECTOR_ETFS.values()))
+        return (
+            build_rows(market_df, MARKET_SYMBOLS),
+            build_rows(sector_df, SECTOR_ETFS),
+        )
+
+    market_result, market_err = safe_execute("市場取得", _fetch_market, default=([], []))
+    market_rows, sector_rows = market_result if market_result else ([], [])
+    if market_err:
+        errors.append(market_err)
+
+    # 2) FREDイベント
+    fred_result, fred_err = safe_execute("FREDイベント取得", fetch_fred_release_dates, default=([], None))
+    if fred_result:
+        fred_events, fred_error = fred_result
+    else:
+        fred_events, fred_error = [], "FREDイベント取得失敗"
+
+    if fred_err:
+        errors.append(fred_err)
+    if fred_error:
+        errors.append(fred_error)
+
     recent_events, upcoming_events = split_fred_events(fred_events)
 
-    # 3) スコア
-    score, reasons, sector_attention = score_market(
-        market_rows=market_rows,
-        sector_rows=sector_rows,
-        recent_events=recent_events,
-        upcoming_events=upcoming_events
+    # 2.5) 米国マクロイベント（メール表示用）
+    us_events_for_mail, err = safe_execute(
+        "米国イベント結果付与",
+        lambda: enrich_us_events_with_results(fred_events),
+        default=[]
     )
-    regime = classify_regime(score)
-    signal, signal_details = generate_research_signal(
-        score=score,
-        market_rows=market_rows,
-        sector_attention=sector_attention,
-        recent_events=recent_events,
-        upcoming_events=upcoming_events
-    )
+    if err:
+        errors.append(err)
 
-    if fred_error:
-        reasons.append(fred_error)
+    macro_payload, err = safe_execute(
+        "米国イベント抽出",
+        lambda: build_us_macro_email_payload(us_events_for_mail or []),
+        default={"mode": "normal", "weekly": [], "past_24h": [], "next_24h": []}
+    )
+    if err:
+        errors.append(err)
+
+    macro_html, err = safe_execute(
+        "マクロHTML生成",
+        lambda: build_macro_html(macro_payload),
+        default="<h3>🗓️ 重要経済指標</h3><p>生成失敗</p>"
+    )
+    if err:
+        errors.append(err)
+
+    # 3) スコア
+    def _score():
+        return score_market(
+            market_rows=market_rows,
+            sector_rows=sector_rows,
+            recent_events=recent_events,
+            upcoming_events=upcoming_events
+        )
+
+    score_result, score_err = safe_execute(
+        "スコア算出",
+        _score,
+        default=(0, ["スコア算出失敗"], {"leaders": [], "laggards": []})
+    )
+    score, reasons, sector_attention = score_result
+    if score_err:
+        errors.append(score_err)
+
+    regime = classify_regime(score)
+
+    signal_result, signal_err = safe_execute(
+        "研究用シグナル生成",
+        lambda: generate_research_signal(
+            score=score,
+            market_rows=market_rows,
+            sector_attention=sector_attention,
+            recent_events=recent_events,
+            upcoming_events=upcoming_events
+        ),
+        default=("観察継続", ["シグナル生成失敗"])
+    )
+    signal, signal_details = signal_result
+    if signal_err:
+        errors.append(signal_err)
+
+    for e in errors:
+        if e not in reasons:
+            reasons.append(e)
 
     # 4) AI要約
-    ai_summary = generate_ai_summary(
-        market_rows=market_rows,
-        sector_rows=sector_rows,
-        recent_events=recent_events,
-        upcoming_events=upcoming_events,
-        score=score,
-        regime=regime,
-        signal=signal,
-        signal_details=signal_details,
-        reasons=reasons
+    ai_summary, ai_err = safe_execute(
+        "AI要約",
+        lambda: generate_ai_summary(
+            market_rows=market_rows,
+            sector_rows=sector_rows,
+            recent_events=recent_events,
+            upcoming_events=upcoming_events,
+            score=score,
+            regime=regime,
+            signal=signal,
+            signal_details=signal_details,
+            reasons=reasons
+        ),
+        default="AI要約生成失敗"
     )
+    if ai_err:
+        errors.append(ai_err)
 
     # 5) CSVログ
-    save_daily_log(
-        market_rows=market_rows,
-        sector_rows=sector_rows,
-        recent_events=recent_events,
-        upcoming_events=upcoming_events,
-        score=score,
-        regime=regime,
-        signal=signal,
-        reasons=reasons
+    _, save_daily_err = safe_execute(
+        "dailyログ保存",
+        lambda: save_daily_log(
+            market_rows=market_rows,
+            sector_rows=sector_rows,
+            recent_events=recent_events,
+            upcoming_events=upcoming_events,
+            score=score,
+            regime=regime,
+            signal=signal,
+            reasons=reasons
+        ),
+        default=None
     )
-    save_event_log(recent_events, upcoming_events)
+    if save_daily_err:
+        errors.append(save_daily_err)
+
+    _, save_event_err = safe_execute(
+        "eventログ保存",
+        lambda: save_event_log(recent_events, upcoming_events),
+        default=None
+    )
+    if save_event_err:
+        errors.append(save_event_err)
 
     # 6) HTMLメール
-    html = build_html(
-        market_rows=market_rows,
-        sector_rows=sector_rows,
-        recent_events=recent_events,
-        upcoming_events=upcoming_events,
-        score=score,
-        regime=regime,
-        signal=signal,
-        signal_details=signal_details,
-        reasons=reasons,
-        ai_summary=ai_summary
+    html, html_err = safe_execute(
+        "HTML生成",
+        lambda: build_html(
+            market_rows=market_rows,
+            sector_rows=sector_rows,
+            recent_events=recent_events,
+            upcoming_events=upcoming_events,
+            score=score,
+            regime=regime,
+            signal=signal,
+            signal_details=signal_details,
+            reasons=reasons,
+            ai_summary=ai_summary,
+            macro_html=macro_html
+        ),
+        default="<html><body><p>HTML生成失敗</p></body></html>"
     )
+    if html_err:
+        errors.append(html_err)
 
     today = now_jst().strftime("%Y-%m-%d")
-    subject = f"{today} 市場レジーム＋FRED主要リリース候補"
-    send_mail(subject, html)
+    subject = f"{today} 市場レジーム＋米国重要経済指標"
 
-    print("Market report email sent successfully.")
+    try:
+        send_mail(subject, html)
+    except Exception as e:
+        err = f"メール送信エラー: {e}"
+        errors.append(err)
+        log_error(err)
+
+    print("Market report email process finished.")
+    if errors:
+        print("Errors:")
+        for x in errors:
+            print("-", x)
     print(f"CSV saved: {DAILY_LOG_FILE}, {EVENT_LOG_FILE}")
 
 
