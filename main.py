@@ -1,14 +1,14 @@
 import os
-import re
 import csv
 import smtplib
 from email.mime.text import MIMEText
-from datetime import datetime, timedelta, timezone
 from email.utils import formataddr
+from datetime import datetime, timedelta, timezone
 
 import requests
 import yfinance as yf
 from openai import OpenAI
+
 
 # =========================================================
 # 設定
@@ -35,10 +35,27 @@ SECTOR_ETFS = {
     "公益": "XLU",
 }
 
-RAPID_API_HOST = "ultimate-economic-calendar.p.rapidapi.com"
-RAPID_API_URL = f"https://{RAPID_API_HOST}/economic-events/tradingview"
-DEFAULT_COUNTRIES = "US,DE,JP"
-MAX_EVENT_IMPACT_SCORE = 10.0
+# FRED
+FRED_BASE_URL = "https://api.stlouisfed.org/fred"
+# 重要イベントとして注目する release 名（提案実装）
+MAJOR_RELEASE_KEYWORDS = [
+    "Consumer Price Index",
+    "Gross Domestic Product",
+    "Employment Situation",
+    "Producer Price Index",
+    "Retail Sales",
+    "Industrial Production",
+    "Personal Income and Outlays",
+    "Advance Monthly Sales for Retail and Food Services",
+    "Employment Cost Index",
+    "Unemployment",
+    "Job Openings and Labor Turnover",
+    "Housing Starts",
+    "New Residential Sales",
+    "Existing Home Sales",
+    "Initial Claims",
+    "Selected Interest Rates",
+]
 
 # CSV保存先
 DAILY_LOG_FILE = "market_ai_daily_log.csv"
@@ -50,13 +67,6 @@ EVENT_LOG_FILE = "market_ai_event_log.csv"
 # =========================================================
 def now_jst():
     return datetime.now(JST)
-
-
-def safe_float(v):
-    try:
-        return float(v)
-    except Exception:
-        return None
 
 
 def format_change(change):
@@ -76,8 +86,15 @@ def colorize_change(change_text):
     return f'<span style="color:#333;">{change_text}</span>'
 
 
+def safe_float(v):
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
 # =========================================================
-# Yahoo Finance データ
+# 市場データ（Yahoo Finance）
 # =========================================================
 def download_ohlc(symbols, period="5d", interval="1d"):
     return yf.download(
@@ -133,321 +150,183 @@ def build_rows(df, symbol_map):
     return rows
 
 
-# =========================================================
-# 経済カレンダー（Ultimate Economic Calendar / RapidAPI）
-# =========================================================
-def fetch_economic_events():
-    api_key = os.getenv("RAPID_API_KEY")
-    if not api_key:
-        return [], "RAPID_API_KEY が未設定です。"
-
-    today = now_jst().date()
-    from_date = (today - timedelta(days=1)).strftime("%Y-%m-%d")
-    to_date = (today + timedelta(days=2)).strftime("%Y-%m-%d")
-    countries = os.getenv("ECON_COUNTRIES", DEFAULT_COUNTRIES)
-
-    headers = {
-        "Content-Type": "application/json",
-        "x-rapidapi-host": RAPID_API_HOST,
-        "x-rapidapi-key": api_key,
-    }
-
-    params = {
-        "from": from_date,
-        "to": to_date,
-        "countries": countries,
-    }
-
-    try:
-        res = requests.get(RAPID_API_URL, headers=headers, params=params, timeout=30)
-        res.raise_for_status()
-        data = res.json()
-    except Exception as e:
-        return [], f"経済カレンダー取得エラー: {e}"
-
-    if isinstance(data, list):
-        raw_events = data
-    elif isinstance(data, dict):
-        raw_events = (
-            data.get("data")
-            or data.get("events")
-            or data.get("result")
-            or data.get("items")
-            or []
-        )
-    else:
-        raw_events = []
-
-    events = []
-    for raw in raw_events:
-        normalized = normalize_event(raw)
-        if normalized:
-            events.append(normalized)
-
-    return events, None
-
-
-def normalize_event(raw):
-    if not isinstance(raw, dict):
-        return None
-
-    name = (
-        raw.get("title")
-        or raw.get("event")
-        or raw.get("name")
-        or raw.get("indicator")
-        or "Unnamed Event"
-    )
-
-    country = (
-        raw.get("country")
-        or raw.get("countryCode")
-        or raw.get("country_code")
-        or raw.get("zone")
-        or raw.get("region")
-        or ""
-    )
-
-    actual = raw.get("actual")
-    forecast = raw.get("forecast") or raw.get("consensus")
-    previous = raw.get("previous")
-
-    importance_raw = (
-        raw.get("importance")
-        or raw.get("impact")
-        or raw.get("importanceLevel")
-        or raw.get("impactLevel")
-        or raw.get("volatility")
-        or ""
-    )
-
-    dt_text = (
-        raw.get("datetime")
-        or raw.get("dateTime")
-        or raw.get("date")
-        or raw.get("time")
-        or ""
-    )
-
-    event_dt = parse_event_datetime(raw, dt_text)
-    status = derive_event_status(event_dt, actual)
-    importance_weight, importance_label = parse_importance(importance_raw)
-    surprise_value = calc_surprise(actual, forecast)
-    surprise_pct = calc_surprise_pct(actual, forecast)
-    surprise_label = classify_surprise(surprise_value, surprise_pct)
-    impact_score = calc_event_impact_score(
-        importance_weight=importance_weight,
-        surprise_pct=surprise_pct,
-        status=status,
-    )
-
-    return {
-        "name": str(name),
-        "country": str(country),
-        "actual": value_or_na(actual),
-        "forecast": value_or_na(forecast),
-        "previous": value_or_na(previous),
-        "event_dt": event_dt,
-        "event_dt_text": event_dt.strftime("%Y-%m-%d %H:%M JST") if event_dt else "日時不明",
-        "status": status,
-        "importance_weight": importance_weight,
-        "importance_label": importance_label,
-        "surprise_value": surprise_value,
-        "surprise_pct": surprise_pct,
-        "surprise_label": surprise_label,
-        "impact_score": impact_score,
-    }
-
-
-def value_or_na(v):
-    if v is None or str(v).strip() == "":
-        return "N/A"
-    return str(v)
-
-
-def parse_event_datetime(raw, dt_text):
-    candidates = []
-    if dt_text:
-        candidates.append(str(dt_text).strip())
-
-    d = raw.get("date")
-    t = raw.get("time")
-    if d and t:
-        candidates.append(f"{d} {t}")
-
-    for key in ["timestamp", "eventTimestamp", "unix", "ts"]:
-        if key in raw:
-            try:
-                ts = int(raw[key])
-                return datetime.fromtimestamp(ts, JST)
-            except Exception:
-                pass
-
-    formats = [
-        "%Y-%m-%dT%H:%M:%S%z",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%d %H:%M",
-        "%Y-%m-%d",
-        "%d/%m/%Y %H:%M",
-        "%d/%m/%Y",
-        "%m/%d/%Y %H:%M",
-        "%m/%d/%Y",
-    ]
-
-    for c in candidates:
-        for fmt in formats:
-            try:
-                dt = datetime.strptime(c, fmt)
-                if dt.tzinfo is None:
-                    return dt.replace(tzinfo=JST)
-                return dt.astimezone(JST)
-            except Exception:
-                continue
-
-    return None
-
-
-def derive_event_status(event_dt, actual):
-    if actual not in [None, "", "N/A"]:
-        return "released"
-    if event_dt:
-        if event_dt <= now_jst():
-            return "released"
-        return "upcoming"
-    return "unknown"
-
-
-def parse_importance(value):
-    s = str(value).strip().lower()
-    if s in {"high", "3", "bull3", "strong", "red"}:
-        return 3.0, "高"
-    if s in {"medium", "2", "bull2", "moderate", "orange"}:
-        return 2.0, "中"
-    if s in {"low", "1", "bull1", "yellow"}:
-        return 1.0, "低"
-    if s in {"holiday", "none", "0", ""}:
-        return 0.5, "低"
-    return 1.5, "中"
-
-
-def parse_numeric_text(v):
-    if v is None:
-        return None
-
-    s = str(v).strip()
-    if s == "" or s.lower() in {"na", "n/a", "none", "null"}:
-        return None
-
-    s = s.replace(",", "")
-    s = s.replace("$", "")
-    s = s.replace("€", "")
-    s = s.replace("¥", "")
-    s = s.replace("£", "")
-    s = s.replace(" ", "")
-
-    multiplier = 1.0
-    if s.endswith("%"):
-        s = s[:-1]
-        multiplier = 1.0
-    elif s.endswith("K"):
-        s = s[:-1]
-        multiplier = 1_000.0
-    elif s.endswith("M"):
-        s = s[:-1]
-        multiplier = 1_000_000.0
-    elif s.endswith("B"):
-        s = s[:-1]
-        multiplier = 1_000_000_000.0
-    elif s.endswith("T"):
-        s = s[:-1]
-        multiplier = 1_000_000_000_000.0
-
-    m = re.search(r"[-+]?\d*\.?\d+", s)
-    if not m:
-        return None
-
-    try:
-        return float(m.group()) * multiplier
-    except Exception:
-        return None
-
-
-def calc_surprise(actual, forecast):
-    a = parse_numeric_text(actual)
-    f = parse_numeric_text(forecast)
-    if a is None or f is None:
-        return None
-    return a - f
-
-
-def calc_surprise_pct(actual, forecast):
-    a = parse_numeric_text(actual)
-    f = parse_numeric_text(forecast)
-    if a is None or f is None:
-        return None
-    if abs(f) < 1e-9:
-        return None
-    return ((a - f) / abs(f)) * 100.0
-
-
-def classify_surprise(surprise_value, surprise_pct):
-    if surprise_value is None and surprise_pct is None:
-        return "判定保留"
-    if surprise_value is not None:
-        if surprise_value > 0:
-            return "上振れ"
-        if surprise_value < 0:
-            return "下振れ"
-    if surprise_pct is not None:
-        if surprise_pct > 0:
-            return "上振れ"
-        if surprise_pct < 0:
-            return "下振れ"
-    return "一致"
-
-
-def calc_event_impact_score(importance_weight, surprise_pct, status):
-    base = importance_weight * 2.0
-    if status == "upcoming":
-        return round(min(MAX_EVENT_IMPACT_SCORE, max(0.5, base)), 2)
-    if surprise_pct is None:
-        return round(min(MAX_EVENT_IMPACT_SCORE, max(0.5, base)), 2)
-    surprise_component = min(4.0, abs(surprise_pct) / 5.0)
-    score = base + surprise_component
-    return round(min(MAX_EVENT_IMPACT_SCORE, max(0.5, score)), 2)
-
-
-def split_events(events):
-    recent = []
-    upcoming = []
-    for e in events:
-        if e["status"] == "upcoming":
-            upcoming.append(e)
-        else:
-            recent.append(e)
-    recent = sorted(recent, key=lambda x: x["impact_score"], reverse=True)
-    upcoming = sorted(upcoming, key=lambda x: x["impact_score"], reverse=True)
-    return recent[:8], upcoming[:8]
-
-
-# =========================================================
-# レジーム / シグナル
-# =========================================================
 def summarize_sector_attention(sector_rows):
     valid = [r for r in sector_rows if r["change_pct"] is not None]
     if not valid:
         return {"leaders": [], "laggards": []}
+
     leaders = sorted(valid, key=lambda x: x["change_pct"], reverse=True)[:3]
     laggards = sorted(valid, key=lambda x: x["change_pct"])[:2]
     return {"leaders": leaders, "laggards": laggards}
 
 
+# =========================================================
+# FRED 経済カレンダー（release datesベース）
+# =========================================================
+def fred_get(path, params=None):
+    api_key = os.getenv("FRED_API_KEY")
+    if not api_key:
+        raise ValueError("FRED_API_KEY が未設定です。")
+
+    if params is None:
+        params = {}
+
+    params = dict(params)
+    params["api_key"] = api_key
+    params["file_type"] = "json"
+
+    url = f"{FRED_BASE_URL}/{path}"
+    res = requests.get(url, params=params, timeout=30)
+    res.raise_for_status()
+    return res.json()
+
+
+def fetch_fred_release_dates():
+    """
+    FRED の fred/releases/dates を取得し、注目release名で絞る提案実装。
+    """
+    try:
+        data = fred_get(
+            "releases/dates",
+            {
+                "sort_order": "asc",
+                "limit": 1000,
+            }
+        )
+    except Exception as e:
+        return [], f"FRED releases/dates 取得エラー: {e}"
+
+    raw_dates = data.get("release_dates", [])
+    events = []
+
+    for item in raw_dates:
+        release_name = item.get("release_name", "")
+        release_id = item.get("release_id", "")
+        date_str = item.get("date", "")
+
+        # 重要リリース名だけ通す（提案実装）
+        if not is_major_release(release_name):
+            continue
+
+        event_dt = parse_date_only(date_str)
+        if event_dt is None:
+            continue
+
+        status = "upcoming" if event_dt.date() >= now_jst().date() else "recent"
+        impact_score = calc_fred_event_impact_score(release_name, event_dt, status)
+
+        events.append({
+            "release_id": release_id,
+            "name": release_name,
+            "event_dt": event_dt,
+            "event_dt_text": event_dt.strftime("%Y-%m-%d"),
+            "status": status,
+            "importance_label": infer_importance_label(release_name),
+            "impact_score": impact_score,
+            "country": "US",
+        })
+
+    # 直近2日〜先7日だけ使う
+    today = now_jst().date()
+    min_date = today - timedelta(days=2)
+    max_date = today + timedelta(days=7)
+
+    filtered = []
+    for e in events:
+        if min_date <= e["event_dt"].date() <= max_date:
+            filtered.append(e)
+
+    return filtered, None
+
+
+def is_major_release(release_name):
+    s = str(release_name)
+    return any(k.lower() in s.lower() for k in MAJOR_RELEASE_KEYWORDS)
+
+
+def parse_date_only(date_str):
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=JST)
+    except Exception:
+        return None
+
+
+def infer_importance_label(release_name):
+    """
+    release名ベースの提案実装
+    """
+    s = release_name.lower()
+    if any(k.lower() in s for k in [
+        "Consumer Price Index",
+        "Gross Domestic Product",
+        "Employment Situation",
+        "Producer Price Index",
+        "Personal Income and Outlays",
+    ]):
+        return "高"
+    if any(k.lower() in s for k in [
+        "Retail Sales",
+        "Industrial Production",
+        "Job Openings and Labor Turnover",
+        "Employment Cost Index",
+        "Housing Starts",
+    ]):
+        return "中"
+    return "低"
+
+
+def calc_fred_event_impact_score(release_name, event_dt, status):
+    """
+    FRED向けイベント影響度スコア（提案ロジック）
+    - release_name で基礎点
+    - 近い日付ほど加点
+    """
+    importance = infer_importance_label(release_name)
+    base = {"高": 8.0, "中": 5.5, "低": 3.0}.get(importance, 3.0)
+
+    days_diff = abs((event_dt.date() - now_jst().date()).days)
+
+    if days_diff == 0:
+        proximity_bonus = 2.0
+    elif days_diff == 1:
+        proximity_bonus = 1.2
+    elif days_diff == 2:
+        proximity_bonus = 0.7
+    else:
+        proximity_bonus = 0.2
+
+    score = min(10.0, round(base + proximity_bonus, 2))
+    return score
+
+
+def split_fred_events(events):
+    recent = []
+    upcoming = []
+
+    today = now_jst().date()
+
+    for e in events:
+        if e["event_dt"].date() >= today:
+            upcoming.append(e)
+        else:
+            recent.append(e)
+
+    recent = sorted(recent, key=lambda x: x["impact_score"], reverse=True)[:8]
+    upcoming = sorted(upcoming, key=lambda x: x["impact_score"], reverse=True)[:8]
+
+    return recent, upcoming
+
+
+# =========================================================
+# レジーム / 研究用シグナル
+# =========================================================
 def score_market(market_rows, sector_rows, recent_events, upcoming_events):
     score = 0
     reasons = []
+
     lookup = {r["label"]: r for r in market_rows}
 
+    # 株価指数
     for key in ["日経平均", "NYダウ", "NASDAQ", "S&P500"]:
         item = lookup.get(key)
         if item and item["change_pct"] is not None:
@@ -458,6 +337,7 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
                 score -= 1
                 reasons.append(f"{key}が下落")
 
+    # VIX
     vix = lookup.get("VIX")
     if vix and vix["change_pct"] is not None:
         if vix["change_pct"] < 0:
@@ -467,6 +347,7 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
             score -= 1
             reasons.append("VIXが上昇")
 
+    # 米10年金利
     tnx = lookup.get("米10年金利")
     if tnx and tnx["change_pct"] is not None:
         if tnx["change_pct"] < 0:
@@ -476,6 +357,7 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
             score -= 1
             reasons.append("米10年金利が上昇")
 
+    # GOLD
     gold = lookup.get("GOLD (USD)")
     if gold and gold["change_pct"] is not None:
         if gold["change_pct"] < 0:
@@ -485,6 +367,7 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
             score -= 1
             reasons.append("GOLDが上昇")
 
+    # BTC
     btc = lookup.get("BTC (USD)")
     if btc and btc["change_pct"] is not None:
         if btc["change_pct"] > 0:
@@ -494,6 +377,7 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
             score -= 1
             reasons.append("BTCが下落")
 
+    # USD/JPY
     usdjpy = lookup.get("USD/JPY")
     if usdjpy and usdjpy["change_pct"] is not None:
         if usdjpy["change_pct"] > 0:
@@ -503,29 +387,28 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
             score -= 1
             reasons.append("USD/JPYが低下")
 
+    # セクター
     sector_attention = summarize_sector_attention(sector_rows)
     if sector_attention["leaders"]:
         reasons.append(
-            "上位セクター: " + "、".join([f"{x['label']}({x['change_text']})" for x in sector_attention["leaders"]])
+            "上位セクター: " + "、".join(
+                [f"{x['label']}({x['change_text']})" for x in sector_attention["leaders"]]
+            )
         )
     if sector_attention["laggards"]:
         reasons.append(
-            "下位セクター: " + "、".join([f"{x['label']}({x['change_text']})" for x in sector_attention["laggards"]])
+            "下位セクター: " + "、".join(
+                [f"{x['label']}({x['change_text']})" for x in sector_attention["laggards"]]
+            )
         )
 
-    for ev in recent_events[:5]:
-        if ev["impact_score"] >= 7.0:
-            if ev["surprise_label"] == "上振れ":
-                score += 1
-                reasons.append(f"重要イベント上振れ: {ev['name']}")
-            elif ev["surprise_label"] == "下振れ":
-                score -= 1
-                reasons.append(f"重要イベント下振れ: {ev['name']}")
-
-    risky_upcoming = [e for e in upcoming_events if e["impact_score"] >= 7.0]
+    # FREDイベントは「予定リスク」として反映（提案実装）
+    risky_upcoming = [e for e in upcoming_events if e["impact_score"] >= 8.5]
     if len(risky_upcoming) >= 2:
         score -= 1
         reasons.append("高影響度の予定イベントが複数控えている")
+    elif len(risky_upcoming) == 1:
+        reasons.append(f"高影響イベント候補: {risky_upcoming[0]['name']}")
 
     return score, reasons, sector_attention
 
@@ -582,12 +465,11 @@ def generate_research_signal(score, market_rows, sector_attention, recent_events
 
     if sector_attention["leaders"]:
         details.append("主導セクター: " + "、".join([x["label"] for x in sector_attention["leaders"]]))
+
     if recent_events:
-        top_recent = recent_events[0]
-        details.append(f"直近の高影響イベント: {top_recent['name']} (影響度 {top_recent['impact_score']})")
+        details.append(f"直近リリース候補: {recent_events[0]['name']} (影響度 {recent_events[0]['impact_score']})")
     if upcoming_events:
-        top_upcoming = upcoming_events[0]
-        details.append(f"次の高影響イベント候補: {top_upcoming['name']} (影響度 {top_upcoming['impact_score']})")
+        details.append(f"次の高影響イベント候補: {upcoming_events[0]['name']} (影響度 {upcoming_events[0]['impact_score']})")
 
     return signal, details
 
@@ -604,18 +486,8 @@ def generate_ai_summary(market_rows, sector_rows, recent_events, upcoming_events
 
     market_lines = [f"{r['label']}: 値={r['value']} / 前日比={r['change_text']}" for r in market_rows]
     sector_lines = [f"{r['label']}: 値={r['value']} / 前日比={r['change_text']}" for r in sector_rows]
-
-    recent_lines = []
-    for e in recent_events[:5]:
-        recent_lines.append(
-            f"{e['event_dt_text']} / {e['country']} / {e['name']} / 実績={e['actual']} / 予想={e['forecast']} / 判定={e['surprise_label']} / 影響度={e['impact_score']}"
-        )
-
-    upcoming_lines = []
-    for e in upcoming_events[:5]:
-        upcoming_lines.append(
-            f"{e['event_dt_text']} / {e['country']} / {e['name']} / 重要度={e['importance_label']} / 影響度={e['impact_score']}"
-        )
+    recent_lines = [f"{e['event_dt_text']} / {e['name']} / 影響度={e['impact_score']}" for e in recent_events[:5]]
+    upcoming_lines = [f"{e['event_dt_text']} / {e['name']} / 重要度={e['importance_label']} / 影響度={e['impact_score']}" for e in upcoming_events[:5]]
 
     prompt = f"""
 あなたは日本語で金融市場サマリーを書くアナリストです。
@@ -627,7 +499,7 @@ def generate_ai_summary(market_rows, sector_rows, recent_events, upcoming_events
 - 日経平均、NYダウ、NASDAQ、S&P500に触れる
 - VIX、米10年金利、GOLD、BTC、USD/JPYに触れる
 - セクターの強弱に触れる
-- 最近の重要経済イベントと今後の高影響イベント候補にも触れる
+- FREDベースの直近 / 今後の重要イベント候補にも触れる
 - 最後に研究用シグナルの意味を短く書く
 - 断定しすぎず、市場コメントとして自然に書く
 
@@ -637,10 +509,10 @@ def generate_ai_summary(market_rows, sector_rows, recent_events, upcoming_events
 【セクターETF】
 {chr(10).join(sector_lines)}
 
-【発表済みイベント】
+【直近リリース候補】
 {chr(10).join(recent_lines) if recent_lines else "なし"}
 
-【予定イベント】
+【今後の主要リリース候補】
 {chr(10).join(upcoming_lines) if upcoming_lines else "なし"}
 
 【総合スコア】
@@ -714,11 +586,10 @@ def save_daily_log(market_rows, sector_rows, recent_events, upcoming_events, sco
         "reason_5",
     ]
 
-    top_recent_event = recent_events[0] if recent_events else None
-    top_upcoming_event = upcoming_events[0] if upcoming_events else None
-
     leaders = sector_attention["leaders"][:3]
     laggards = sector_attention["laggards"][:2]
+    top_recent = recent_events[0] if recent_events else None
+    top_upcoming = upcoming_events[0] if upcoming_events else None
 
     row = {
         "run_timestamp_jst": now_jst().strftime("%Y-%m-%d %H:%M:%S"),
@@ -739,10 +610,10 @@ def save_daily_log(market_rows, sector_rows, recent_events, upcoming_events, sco
         "top_sector_3": leaders[2]["label"] if len(leaders) > 2 else "",
         "laggard_sector_1": laggards[0]["label"] if len(laggards) > 0 else "",
         "laggard_sector_2": laggards[1]["label"] if len(laggards) > 1 else "",
-        "top_recent_event": top_recent_event["name"] if top_recent_event else "",
-        "top_recent_event_impact": top_recent_event["impact_score"] if top_recent_event else "",
-        "top_upcoming_event": top_upcoming_event["name"] if top_upcoming_event else "",
-        "top_upcoming_event_impact": top_upcoming_event["impact_score"] if top_upcoming_event else "",
+        "top_recent_event": top_recent["name"] if top_recent else "",
+        "top_recent_event_impact": top_recent["impact_score"] if top_recent else "",
+        "top_upcoming_event": top_upcoming["name"] if top_upcoming else "",
+        "top_upcoming_event_impact": top_upcoming["impact_score"] if top_upcoming else "",
         "reason_1": reasons[0] if len(reasons) > 0 else "",
         "reason_2": reasons[1] if len(reasons) > 1 else "",
         "reason_3": reasons[2] if len(reasons) > 2 else "",
@@ -757,18 +628,12 @@ def save_event_log(recent_events, upcoming_events):
     fieldnames = [
         "run_timestamp_jst",
         "bucket",
-        "event_datetime_jst",
+        "event_date_jst",
         "country",
         "event_name",
-        "status",
         "importance_label",
         "impact_score",
-        "actual",
-        "forecast",
-        "previous",
-        "surprise_label",
-        "surprise_value",
-        "surprise_pct",
+        "release_id",
     ]
 
     run_ts = now_jst().strftime("%Y-%m-%d %H:%M:%S")
@@ -778,18 +643,12 @@ def save_event_log(recent_events, upcoming_events):
             row = {
                 "run_timestamp_jst": run_ts,
                 "bucket": bucket_name,
-                "event_datetime_jst": e["event_dt_text"],
+                "event_date_jst": e["event_dt_text"],
                 "country": e["country"],
                 "event_name": e["name"],
-                "status": e["status"],
                 "importance_label": e["importance_label"],
                 "impact_score": e["impact_score"],
-                "actual": e["actual"],
-                "forecast": e["forecast"],
-                "previous": e["previous"],
-                "surprise_label": e["surprise_label"],
-                "surprise_value": e["surprise_value"],
-                "surprise_pct": e["surprise_pct"],
+                "release_id": e["release_id"],
             }
             append_csv_row(EVENT_LOG_FILE, fieldnames, row)
 
@@ -871,48 +730,30 @@ def build_market_table(rows):
     """
 
 
-def build_event_table(events, title):
+def build_fred_event_table(events, title):
     if not events:
         return f"<h3>{title}</h3><p>該当なし</p>"
 
     rows = []
     for e in events:
-        surprise_text = "N/A"
-        if e["surprise_pct"] is not None:
-            sign = "+" if e["surprise_pct"] > 0 else ""
-            surprise_text = f"{sign}{e['surprise_pct']:.2f}%"
-        elif e["surprise_value"] is not None:
-            sign = "+" if e["surprise_value"] > 0 else ""
-            surprise_text = f"{sign}{e['surprise_value']:.4f}"
-
         rows.append(f"""
         <tr>
             <td style="padding:8px 10px;border-bottom:1px solid #ddd;">{e['event_dt_text']}</td>
             <td style="padding:8px 10px;border-bottom:1px solid #ddd;">{e['country']}</td>
             <td style="padding:8px 10px;border-bottom:1px solid #ddd;">{e['name']}</td>
             <td style="padding:8px 10px;border-bottom:1px solid #ddd;text-align:center;">{e['importance_label']}</td>
-            <td style="padding:8px 10px;border-bottom:1px solid #ddd;text-align:right;">{e['actual']}</td>
-            <td style="padding:8px 10px;border-bottom:1px solid #ddd;text-align:right;">{e['forecast']}</td>
-            <td style="padding:8px 10px;border-bottom:1px solid #ddd;text-align:right;">{e['previous']}</td>
-            <td style="padding:8px 10px;border-bottom:1px solid #ddd;text-align:center;">{e['surprise_label']}</td>
-            <td style="padding:8px 10px;border-bottom:1px solid #ddd;text-align:right;">{surprise_text}</td>
             <td style="padding:8px 10px;border-bottom:1px solid #ddd;text-align:right;"><b>{e['impact_score']}</b></td>
         </tr>
         """)
 
     return f"""
     <h3 style="margin-top:16px;margin-bottom:8px;">{title}</h3>
-    <table style="border-collapse:collapse;width:100%;max-width:1100px;font-size:13px;">
+    <table style="border-collapse:collapse;width:100%;max-width:980px;font-size:13px;">
         <tr style="background:#f4f6f8;">
-            <th style="padding:10px;text-align:left;border-bottom:2px solid #ccc;">日時</th>
+            <th style="padding:10px;text-align:left;border-bottom:2px solid #ccc;">日付</th>
             <th style="padding:10px;text-align:left;border-bottom:2px solid #ccc;">国</th>
-            <th style="padding:10px;text-align:left;border-bottom:2px solid #ccc;">イベント</th>
+            <th style="padding:10px;text-align:left;border-bottom:2px solid #ccc;">リリース</th>
             <th style="padding:10px;text-align:center;border-bottom:2px solid #ccc;">重要度</th>
-            <th style="padding:10px;text-align:right;border-bottom:2px solid #ccc;">実績</th>
-            <th style="padding:10px;text-align:right;border-bottom:2px solid #ccc;">予想</th>
-            <th style="padding:10px;text-align:right;border-bottom:2px solid #ccc;">前回</th>
-            <th style="padding:10px;text-align:center;border-bottom:2px solid #ccc;">判定</th>
-            <th style="padding:10px;text-align:right;border-bottom:2px solid #ccc;">サプライズ</th>
             <th style="padding:10px;text-align:right;border-bottom:2px solid #ccc;">影響度</th>
         </tr>
         {''.join(rows)}
@@ -932,7 +773,7 @@ def build_html(market_rows, sector_rows, recent_events, upcoming_events, score, 
     <html>
     <body style="font-family:Arial, Helvetica, sans-serif; color:#222; line-height:1.7;">
         <h2 style="margin-bottom:8px;">🌏 市場サマリー</h2>
-        <p>{today} 時点 / Yahoo Finance + Ultimate Economic Calendar（RapidAPI）</p>
+        <p>{today} 時点 / Yahoo Finance + FRED API</p>
 
         <h3 style="margin-top:18px;margin-bottom:8px;">📊 マーケット</h3>
         {build_market_table(market_rows)}
@@ -949,9 +790,9 @@ def build_html(market_rows, sector_rows, recent_events, upcoming_events, score, 
         <h4 style="margin-top:16px;margin-bottom:6px;">📌 下位セクター</h4>
         <p>{laggards_html}</p>
 
-        <h3 style="margin-top:24px;margin-bottom:8px;">🗓️ 経済イベント</h3>
-        {build_event_table(recent_events, "発表済みイベント（影響度順）")}
-        {build_event_table(upcoming_events, "予定イベント（影響度順）")}
+        <h3 style="margin-top:24px;margin-bottom:8px;">🗓️ FREDベースの主要リリース候補</h3>
+        {build_fred_event_table(recent_events, "直近の主要リリース候補")}
+        {build_fred_event_table(upcoming_events, "今後の主要リリース候補")}
 
         <h3 style="margin-top:24px;margin-bottom:8px;">🔎 判定の根拠</h3>
         <p>{reasons_html}</p>
@@ -963,7 +804,7 @@ def build_html(market_rows, sector_rows, recent_events, upcoming_events, score, 
         <p>daily: {DAILY_LOG_FILE}<br>events: {EVENT_LOG_FILE}</p>
 
         <p style="margin-top:18px;color:#666;font-size:12px;">
-            ※ 研究・観察用レポートです。実運用前に必ず別途検証してください。
+            ※ FRED版では release dates ベースでイベントを扱っています。
         </p>
     </body>
     </html>
@@ -995,20 +836,22 @@ def send_mail(subject, html):
 # 実行
 # =========================================================
 def main():
+    # 1) 市場
     market_df = download_ohlc(list(MARKET_SYMBOLS.values()))
     sector_df = download_ohlc(list(SECTOR_ETFS.values()))
-
     market_rows = build_rows(market_df, MARKET_SYMBOLS)
     sector_rows = build_rows(sector_df, SECTOR_ETFS)
 
-    all_events, event_error = fetch_economic_events()
-    recent_events, upcoming_events = split_events(all_events)
+    # 2) FRED release dates
+    fred_events, fred_error = fetch_fred_release_dates()
+    recent_events, upcoming_events = split_fred_events(fred_events)
 
+    # 3) スコア
     score, reasons, sector_attention = score_market(
         market_rows=market_rows,
         sector_rows=sector_rows,
         recent_events=recent_events,
-        upcoming_events=upcoming_events,
+        upcoming_events=upcoming_events
     )
     regime = classify_regime(score)
     signal, signal_details = generate_research_signal(
@@ -1016,12 +859,13 @@ def main():
         market_rows=market_rows,
         sector_attention=sector_attention,
         recent_events=recent_events,
-        upcoming_events=upcoming_events,
+        upcoming_events=upcoming_events
     )
 
-    if event_error:
-        reasons.append(event_error)
+    if fred_error:
+        reasons.append(fred_error)
 
+    # 4) AI要約
     ai_summary = generate_ai_summary(
         market_rows=market_rows,
         sector_rows=sector_rows,
@@ -1031,10 +875,10 @@ def main():
         regime=regime,
         signal=signal,
         signal_details=signal_details,
-        reasons=reasons,
+        reasons=reasons
     )
 
-    # CSV保存
+    # 5) CSVログ
     save_daily_log(
         market_rows=market_rows,
         sector_rows=sector_rows,
@@ -1043,10 +887,11 @@ def main():
         score=score,
         regime=regime,
         signal=signal,
-        reasons=reasons,
+        reasons=reasons
     )
-    save_event_log(recent_events=recent_events, upcoming_events=upcoming_events)
+    save_event_log(recent_events, upcoming_events)
 
+    # 6) HTMLメール
     html = build_html(
         market_rows=market_rows,
         sector_rows=sector_rows,
@@ -1057,12 +902,13 @@ def main():
         signal=signal,
         signal_details=signal_details,
         reasons=reasons,
-        ai_summary=ai_summary,
+        ai_summary=ai_summary
     )
 
     today = now_jst().strftime("%Y-%m-%d")
-    subject = f"{today} 市場レジーム＋イベント影響度スコア"
+    subject = f"{today} 市場レジーム＋FRED主要リリース候補"
     send_mail(subject, html)
+
     print("Market report email sent successfully.")
     print(f"CSV saved: {DAILY_LOG_FILE}, {EVENT_LOG_FILE}")
 
