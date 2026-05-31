@@ -2,45 +2,46 @@ name: Daily Market AI (FRED)
 
 on:
   schedule:
-    # JST 07:03（= UTC 22:03）
-  - cron: '03 22 * * *'   # 07:03
+    # JST 08:07 / 08:20（冗長化）
+    - cron: '7 23 * * *'
+    - cron: '20 23 * * *'
   workflow_dispatch:
 
 jobs:
   run-market-ai:
     runs-on: ubuntu-latest
 
-    # ✅ Node24強制（警告回避 & 将来互換）
     env:
+      # ✅ Node 24 強制（互換性対策）
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     steps:
-      # =========================
+      # ===================================
       # ① リポジトリ取得
-      # =========================
+      # ===================================
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      # =========================
+      # ===================================
       # ② Python セットアップ
-      # =========================
+      # ===================================
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: "pip"
 
-      # =========================
+      # ===================================
       # ③ ライブラリインストール
-      # =========================
+      # ===================================
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # =========================
-      # ④ Market AI 実行
-      # =========================
+      # ===================================
+      # ④ 実行
+      # ===================================
       - name: Run Market AI
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
@@ -52,22 +53,22 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           TO_EMAIL: ${{ secrets.TO_EMAIL }}
         run: |
-          echo "----- START MARKET AI -----"
+          echo "===== START MARKET AI ====="
           python main.py
-          echo "----- END MARKET AI -----"
+          echo "===== END MARKET AI ====="
 
-      # =========================
-      # ⑤ HTMLログ保存（確認用）
-      # =========================
-      - name: Upload HTML report artifact
-        uses: actions/upload-artifact@v4
+      # ===================================
+      # ⑤ HTMLを保存（デバッグ用）
+      # ===================================
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v5   # ✅ ← これ重要（Node24対応）
         with:
           name: market-ai-html
           path: market_ai_latest_report.html
 
-      # =========================
+      # ===================================
       # ⑥ CSVログコミット
-      # =========================
+      # ===================================
       - name: Commit CSV logs
         run: |
           git config user.name "GitHub Actions"
@@ -76,11 +77,11 @@ jobs:
           git add market_ai_daily_log.csv || echo "no daily log"
           git add market_ai_event_log.csv || echo "no event log"
 
-          git diff --cached --quiet || git commit -m "Update CSV logs $(date +'%Y-%m-%d %H:%M')"
+          git diff --cached --quiet || git commit -m "Update logs $(date +'%Y-%m-%d %H:%M')"
 
-      # =========================
+      # ===================================
       # ⑦ push（失敗しても止めない）
-      # =========================
+      # ===================================
       - name: Push changes
         run: |
           git push || echo "push skipped"
