@@ -30,10 +30,17 @@ MARKET_SYMBOLS = {
 SECTOR_ETFS = {
     "テクノロジー": "XLK",
     "金融": "XLF",
-    "素材": "XLB",
     "ヘルスケア": "XLV",
+    "一般消費": "XLY",
+    "生活必需": "XLP",
+    "資本財": "XLI",
+    "エネルギー": "XLE",
+    "素材": "XLB",
+    "通信": "XLC",
     "公益": "XLU",
+    "不動産": "XLRE",
 }
+
 
 # FRED
 FRED_BASE_URL = "https://api.stlouisfed.org/fred"
