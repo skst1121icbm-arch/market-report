@@ -529,23 +529,23 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
         raise FileNotFoundError(f"{file_path} が見つかりません。")
 
     df = pd.read_excel(file_path, sheet_name=0, header=None, engine="openpyxl")
-
     print("DF SHAPE:", df.shape)
 
     events = []
     current_date = None
 
     for _, row in df.iterrows():
-        raw = [normalize_excel_value(x) for x in row.tolist()[:8]]
+        raw = [normalize_excel_value(x) for x in row.tolist()[:9]]
         print("ROW RAW:", raw)
 
-        c0 = raw[0] if len(raw) > 0 else None
-        c1 = raw[1] if len(raw) > 1 else None
-        c2 = raw[2] if len(raw) > 2 else None
-        c3 = raw[3] if len(raw) > 3 else None
-        c4 = raw[4] if len(raw) > 4 else None
-        c5 = raw[5] if len(raw) > 5 else None
-        c6 = raw[6] if len(raw) > 6 else None
+        c0 = raw[0] if len(raw) > 0 else None   # 日付
+        c1 = raw[1] if len(raw) > 1 else None   # 時刻
+        c2 = raw[2] if len(raw) > 2 else None   # ★
+        c3 = raw[3] if len(raw) > 3 else None   # 空列のことが多い
+        c4 = raw[4] if len(raw) > 4 else None   # 指標名
+        c5 = raw[5] if len(raw) > 5 else None   # 実績 or 予想
+        c6 = raw[6] if len(raw) > 6 else None   # 予想 or 前回
+        c7 = raw[7] if len(raw) > 7 else None   # 前回 or 備考
 
         # 日付行
         if c0 and "/" in str(c0):
@@ -558,8 +558,9 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
         if current_date is None:
             continue
 
-        # 指標名がない行はスキップ
-        if not c3:
+        # 指標名は c4 にある
+        event_name = c4
+        if not event_name:
             continue
 
         time_pair = parse_excel_time_label(c1)
@@ -572,24 +573,25 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
 
         stars = str(c2).count("★") if c2 else 0
         importance_label = infer_importance_label_from_stars(stars)
-        country = classify_country_from_name(c3)
+        country = classify_country_from_name(event_name)
 
+        # H列以降の補足
         notes = []
-        for idx in range(7, len(row)):
+        for idx in range(8, len(row)):
             v = normalize_excel_value(row.iloc[idx])
             if v:
                 notes.append(v)
 
         note_text = " / ".join(notes) if notes else None
-        result_text = build_event_result_text(c4, c5, c6, note_text)
+        result_text = build_event_result_text(c5, c6, c7, note_text)
 
         status = "upcoming" if event_dt >= now_jst() else "recent"
 
-        print("APPEND EVENT:", event_dt, c3, stars)
+        print("APPEND EVENT:", event_dt, event_name, stars)
 
         events.append({
             "release_id": None,
-            "name": c3,
+            "name": event_name,
             "event_dt": event_dt,
             "event_dt_text": event_dt.strftime("%m/%d %H:%M"),
             "status": status,
@@ -602,7 +604,7 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
 
     print("TOTAL APPENDED EVENTS:", len(events))
     return events
-
+    
 # =========================================================
 # FRED表示用ペイロード
 # =========================================================
