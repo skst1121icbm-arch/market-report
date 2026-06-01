@@ -54,6 +54,11 @@ jobs:
           TO_EMAIL: ${{ secrets.TO_EMAIL }}
         run: |
           echo "===== START MARKET AI ====="
+          pwd
+          ls -la
+          echo "===== CHECK EXCEL ====="
+          ls -la スケジュール.xlsx || true
+          ls -la schedule.xlsx || true
           python main.py
           echo "===== END MARKET AI ====="
 
