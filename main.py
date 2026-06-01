@@ -197,6 +197,7 @@ def within_next_24h(dt):
     return now < dt <= (now + timedelta(hours=24))
 
 
+
 def within_this_week(dt):
     now = now_jst()
 
@@ -206,6 +207,7 @@ def within_this_week(dt):
     end_of_week = start_of_week + timedelta(days=7)
 
     return start_of_week <= dt < end_of_week
+
 
 
 def save_latest_html(html, file_path=LATEST_HTML_FILE):
@@ -429,17 +431,11 @@ def normalize_excel_value(v):
 
 
 def parse_excel_date_label(date_label):
-    """
-    例:
-      06/01(月)
-      06/24(水)
-    -> 今年の JST datetime(date only)
-    """
     s = normalize_excel_value(date_label)
     if not s:
         return None
 
-    s = s.split("(")[0].strip()
+    s = s.split("(")[0].strip()   # 06/01(月) -> 06/01
 
     try:
         year = now_jst().year
@@ -448,14 +444,7 @@ def parse_excel_date_label(date_label):
     except Exception:
         return None
 
-
 def parse_excel_time_label(time_label):
-    """
-    例:
-      23:00:00
-      08:50:00
-      -
-    """
     s = normalize_excel_value(time_label)
     if not s:
         return None
@@ -533,19 +522,6 @@ def build_event_result_text(actual, forecast, previous, note=None):
 
 
 def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
-    """
-    スケジュール.xlsx を読み込み、イベント一覧に変換する。
-
-    想定フォーマット:
-      A列: 日付ラベル (06/01(月) など) または空
-      B列: 時刻
-      C列: 重要度(★)
-      D列: 指標名
-      E列: 実績または予想
-      F列: 予想または前回
-      G列: 前回または備考
-      H列以降: 補足
-    """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"{file_path} が見つかりません。")
 
@@ -589,7 +565,6 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
         importance_label = infer_importance_label_from_stars(stars)
         country = classify_country_from_name(c3)
 
-        # H列以降の補足を連結
         notes = []
         for idx in range(7, len(row)):
             v = normalize_excel_value(row.iloc[idx])
@@ -621,13 +596,6 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
 # FRED表示用ペイロード
 # =========================================================
 def build_fred_email_payload(events):
-    """
-    月曜:
-      - 今週の予定（★2以上）
-    月曜以外:
-      - 直近24時間の発表済み（★2以上）
-      - 今後24時間の発表予定（★2以上）
-    """
     now = now_jst()
 
     if is_monday():
@@ -651,6 +619,32 @@ def build_fred_email_payload(events):
             "past_24h": [],
             "next_24h": [],
         }
+
+    past_24h = []
+    next_24h = []
+
+    for e in events:
+        if e.get("stars", 0) < 2:
+            continue
+
+        event_dt = e.get("event_dt")
+        if not event_dt:
+            continue
+
+        if within_last_24h(event_dt):
+            past_24h.append(e)
+        elif within_next_24h(event_dt):
+            next_24h.append(e)
+
+    past_24h = sorted(past_24h, key=lambda x: x["event_dt"], reverse=True)
+    next_24h = sorted(next_24h, key=lambda x: x["event_dt"])
+
+    return {
+        "mode": "normal",
+        "weekly": [],
+        "past_24h": past_24h,
+        "next_24h": next_24h,
+    }
 
     past_24h = []
     next_24h = []
