@@ -1304,6 +1304,14 @@ def main():
     recent_events = enrich_fred_events_with_results(recent_events)
     upcoming_events = enrich_fred_events_with_results(upcoming_events)
 
+    # ===== デバッグ確認（原因切り分け用）=====
+    print("ALL EVENTS:", len(fred_events))
+    if fred_payload["mode"] == "monday":
+        print("WEEKLY EVENTS:", len(fred_payload["weekly"]))
+    else:
+        print("PAST_24H EVENTS:", len(fred_payload["past_24h"]))
+        print("NEXT_24H EVENTS:", len(fred_payload["next_24h"]))
+    
     # 5) スコア算出
     score_result, score_err = safe_execute(
         "スコア算出",
