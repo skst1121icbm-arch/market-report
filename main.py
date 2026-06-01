@@ -195,9 +195,16 @@ def within_next_24h(dt):
 
 
 def within_this_week(dt):
-    today = now_jst().date()
-    week_end = today + timedelta(days=6)
-    return today <= dt.date() <= week_end
+    now = now_jst()
+
+    # ✅ 今週の月曜 00:00
+    start_of_week = now - timedelta(days=now.weekday())
+    start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # ✅ 来週の月曜 00:00
+    end_of_week = start_of_week + timedelta(days=7)
+
+    return start_of_week <= dt < end_of_week
 
 
 def save_latest_html(html, file_path=LATEST_HTML_FILE):
