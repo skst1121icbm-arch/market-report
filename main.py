@@ -123,8 +123,8 @@ ERROR_LOG_FILE = "market_ai_error.log"
 # HTML保存先（デバッグ用）
 LATEST_HTML_FILE = "market_ai_latest_report.html"
 
-# Excel スケジュール
-EXCEL_CALENDAR_FILE = "スケジュール.xlsx"
+# Excel schedule
+EXCEL_CALENDAR_FILE = "schedule.xlsx"
 
 
 # =========================================================
@@ -418,7 +418,7 @@ def enrich_fred_events_with_results(events):
 
 
 # =========================================================
-# Excel スケジュール読込
+# Excel schedule読込
 # =========================================================
 def normalize_excel_value(v):
     if v is None:
@@ -620,32 +620,6 @@ def build_fred_email_payload(events):
             "past_24h": [],
             "next_24h": [],
         }
-
-    past_24h = []
-    next_24h = []
-
-    for e in events:
-        if e.get("stars", 0) < 2:
-            continue
-
-        event_dt = e.get("event_dt")
-        if not event_dt:
-            continue
-
-        if within_last_24h(event_dt):
-            past_24h.append(e)
-        elif within_next_24h(event_dt):
-            next_24h.append(e)
-
-    past_24h = sorted(past_24h, key=lambda x: x["event_dt"], reverse=True)
-    next_24h = sorted(next_24h, key=lambda x: x["event_dt"])
-
-    return {
-        "mode": "normal",
-        "weekly": [],
-        "past_24h": past_24h,
-        "next_24h": next_24h,
-    }
 
     past_24h = []
     next_24h = []
@@ -1205,7 +1179,7 @@ def build_html(market_rows, sector_rows, score, regime, signal, signal_details, 
     <html>
     <body style="font-family:Arial, Helvetica, sans-serif; color:#222; line-height:1.7;">
         <h2 style="margin-bottom:8px;">🌏 市場サマリー</h2>
-        <p>{today} 時点 / Yahoo Finance + Excelスケジュール</p>
+        <p>{today} 時点 / Yahoo Finance + Excelschedule</p>
 
         <h3 style="margin-top:18px;margin-bottom:8px;">📊 マーケット</h3>
         {build_market_table(market_rows)}
@@ -1234,7 +1208,7 @@ def build_html(market_rows, sector_rows, score, regime, signal, signal_details, 
         <p>daily: {DAILY_LOG_FILE}<br>events: {EVENT_LOG_FILE}</p>
 
         <p style="margin-top:18px;color:#666;font-size:12px;">
-            ※ 経済指標は Excel スケジュールを参照しています。<br>
+            ※ 経済指標は Excel scheduleを参照しています。<br>
             ※ 月曜は今週1週間の予定、それ以外は昨日/本日の24時間基準で表示しています。<br>
             ※ 本レポートは市場動向の参考情報であり、投資助言ではありません。
         </p>
