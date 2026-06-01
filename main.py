@@ -1274,6 +1274,10 @@ def main():
     )
     if excel_err:
         errors.append(excel_err)
+    
+    print("EXCEL FILE:", EXCEL_CALENDAR_FILE)
+    print("FILE EXISTS:", os.path.exists(EXCEL_CALENDAR_FILE))
+    print("EXCEL ERR:", excel_err)
 
     # 3) 表示用ペイロード作成
     fred_payload, payload_err = safe_execute(
