@@ -521,23 +521,18 @@ def build_event_result_text(actual, forecast, previous, note=None):
 
 
 def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
-    print("LOAD FILE PATH:", file_path)
-    print("ABS PATH:", os.path.abspath(file_path))
-    print("EXISTS:", os.path.exists(file_path))
 
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"{file_path} が見つかりません。")
 
     df = pd.read_excel(file_path, sheet_name=0, header=None, engine="openpyxl")
-    print("DF SHAPE:", df.shape)
-
+    
     events = []
     current_date = None
 
     for _, row in df.iterrows():
         raw = [normalize_excel_value(x) for x in row.tolist()[:9]]
-        print("ROW RAW:", raw)
-
+        
         c0 = raw[0] if len(raw) > 0 else None   # 日付
         c1 = raw[1] if len(raw) > 1 else None   # 時刻
         c2 = raw[2] if len(raw) > 2 else None   # ★
@@ -550,7 +545,6 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
         # 日付行
         if c0 and "/" in str(c0):
             parsed_date = parse_excel_date_label(str(c0))
-            print("DATE ROW:", c0, "->", parsed_date)
             if parsed_date:
                 current_date = parsed_date
             continue
@@ -587,8 +581,6 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
 
         status = "upcoming" if event_dt >= now_jst() else "recent"
 
-        print("APPEND EVENT:", event_dt, event_name, stars)
-
         events.append({
             "release_id": None,
             "name": event_name,
@@ -602,7 +594,6 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
             "result": result_text,
         })
 
-    print("TOTAL APPENDED EVENTS:", len(events))
     return events
     
 # =========================================================
@@ -1288,10 +1279,6 @@ def main():
     )
     if excel_err:
         errors.append(excel_err)
-    
-    print("EXCEL FILE:", EXCEL_CALENDAR_FILE)
-    print("FILE EXISTS:", os.path.exists(EXCEL_CALENDAR_FILE))
-    print("EXCEL ERR:", excel_err)
 
     # 3) 表示用ペイロード作成
     fred_payload, payload_err = safe_execute(
@@ -1321,14 +1308,6 @@ def main():
     # 念のため、Excel由来で result が空のものだけ FRED で補完したい場合
     recent_events = enrich_fred_events_with_results(recent_events)
     upcoming_events = enrich_fred_events_with_results(upcoming_events)
-
-    # ===== デバッグ確認（原因切り分け用）=====
-    print("ALL EVENTS:", len(fred_events))
-    if fred_payload["mode"] == "monday":
-        print("WEEKLY EVENTS:", len(fred_payload["weekly"]))
-    else:
-        print("PAST_24H EVENTS:", len(fred_payload["past_24h"]))
-        print("NEXT_24H EVENTS:", len(fred_payload["next_24h"]))
     
     # 5) スコア算出
     score_result, score_err = safe_execute(
