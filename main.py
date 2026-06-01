@@ -284,7 +284,7 @@ def summarize_sector_attention(sector_rows):
 
 
 # =========================================================
-# FRED 経済カレンダー（release datesベース）
+# FRED 経済カレンダー（ユーティリティとして残す）
 # =========================================================
 def fred_get(path, params=None):
     api_key = os.getenv("FRED_API_KEY")
@@ -357,69 +357,10 @@ def calc_fred_event_impact_score(release_name, event_dt, status):
     return score
 
 
-def fetch_fred_release_dates():
-    """
-    FRED の fred/releases/dates を取得し、注目release名で絞る
-    """
-    try:
-        data = fred_get(
-            "releases/dates",
-            {
-                "sort_order": "asc",
-                "limit": 1000,
-            }
-        )
-    except Exception as e:
-        return [], f"FRED releases/dates 取得エラー: {e}"
-
-    raw_dates = data.get("release_dates", [])
-    events = []
-
-    for item in raw_dates:
-        release_name = item.get("release_name", "")
-        release_id = item.get("release_id", "")
-        date_str = item.get("date", "")
-
-        if not is_major_release(release_name):
-            continue
-
-        event_dt = parse_date_only(date_str)
-        if event_dt is None:
-            continue
-
-        status = "upcoming" if event_dt.date() >= now_jst().date() else "recent"
-        importance_label = infer_importance_label(release_name)
-        impact_score = calc_fred_event_impact_score(release_name, event_dt, status)
-
-        events.append({
-            "release_id": release_id,
-            "name": release_name,
-            "event_dt": event_dt,
-            "event_dt_text": event_dt.strftime("%Y-%m-%d"),
-            "status": status,
-            "importance_label": importance_label,
-            "impact_score": impact_score,
-            "country": "US",
-            "stars": importance_to_stars(importance_label),
-            "result": None,
-        })
-
-    today = now_jst().date()
-    min_date = today - timedelta(days=2)
-    max_date = today + timedelta(days=7)
-
-    filtered = []
-    for e in events:
-        if min_date <= e["event_dt"].date() <= max_date:
-            filtered.append(e)
-
-    return filtered, None
-
-
-# =========================================================
-# FRED 結果付与
-# =========================================================
 def fetch_fred_latest_result(series_id):
+    """
+    FRED の series/observations から直近値を取得（必要時のみ利用）
+    """
     try:
         data = fred_get(
             "series/observations",
@@ -451,12 +392,18 @@ def fetch_fred_latest_result(series_id):
 
 
 def enrich_fred_events_with_results(events):
+    """
+    必要なら FRED の series_id マッピングに一致するものだけ result を補強
+    （Excel 由来の result を優先しつつ、空なら補う）
+    """
     enriched = []
     for e in events:
         x = dict(e)
-        x["result"] = None
+        if x.get("result"):
+            enriched.append(x)
+            continue
 
-        mapping = US_RELEASE_SERIES_MAP.get(x["name"])
+        mapping = US_RELEASE_SERIES_MAP.get(x.get("name"))
         if mapping:
             result_text = fetch_fred_latest_result(mapping["series_id"])
             if result_text:
@@ -466,9 +413,7 @@ def enrich_fred_events_with_results(events):
 
     return enriched
 
-# =========================================================
-# Excel スケジュール読込
-# =========================================================
+
 # =========================================================
 # Excel スケジュール読込
 # =========================================================
@@ -494,7 +439,6 @@ def parse_excel_date_label(date_label):
     if not s:
         return None
 
-    # 06/01(月) -> 06/01
     s = s.split("(")[0].strip()
 
     try:
@@ -541,7 +485,6 @@ def classify_country_from_name(name):
         "マネタリーベース", "マネーストック", "景気ウォッチャー", "第3次産業活動指数",
         "完全失業率", "有効求人倍率", "鉱工業生産", "小売業販売額", "百貨店・スーパー販売額",
         "国際収支", "GDPデフレータ", "対内証券投資", "対外証券投資", "景気ウォッチャー調査",
-        "第3次産業活動指数", "家計調査", "国内企業物価", "景気一致指数", "景気先行指数",
     ]
     us_keywords = [
         "ISM", "ADP", "原油在庫", "ガソリン在庫", "留出油在庫", "新規失業保険申請件数",
@@ -558,7 +501,6 @@ def classify_country_from_name(name):
     if any(k in name for k in us_keywords):
         return "US"
 
-    # デフォルトは US 扱い
     return "US"
 
 
@@ -673,7 +615,8 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
         })
 
     return events
-    
+
+
 # =========================================================
 # FRED表示用ペイロード
 # =========================================================
@@ -735,6 +678,7 @@ def build_fred_email_payload(events):
         "next_24h": next_24h,
     }
 
+
 # =========================================================
 # レジーム / トレンドシグナル
 # =========================================================
@@ -747,7 +691,7 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
     # 主要指数
     for key in ["日経平均", "NYダウ", "NASDAQ", "S&P500"]:
         item = lookup.get(key)
-        if item and item["change_pct"] is not None:
+        if item and item.get("change_pct") is not None:
             if item["change_pct"] > 0:
                 score += 1
                 reasons.append(f"{key}が上昇")
@@ -757,7 +701,7 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
 
     # VIX
     vix = lookup.get("VIX")
-    if vix and vix["change_pct"] is not None:
+    if vix and vix.get("change_pct") is not None:
         if vix["change_pct"] < 0:
             score += 1
             reasons.append("VIXが低下")
@@ -767,7 +711,7 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
 
     # 米10年金利
     tnx = lookup.get("米10年金利")
-    if tnx and tnx["change_pct"] is not None:
+    if tnx and tnx.get("change_pct") is not None:
         if tnx["change_pct"] < 0:
             score += 1
             reasons.append("米10年金利が低下")
@@ -777,7 +721,7 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
 
     # GOLD
     gold = lookup.get("GOLD (USD)")
-    if gold and gold["change_pct"] is not None:
+    if gold and gold.get("change_pct") is not None:
         if gold["change_pct"] < 0:
             score += 1
             reasons.append("GOLDが下落")
@@ -787,7 +731,7 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
 
     # BTC
     btc = lookup.get("BTC (USD)")
-    if btc and btc["change_pct"] is not None:
+    if btc and btc.get("change_pct") is not None:
         if btc["change_pct"] > 0:
             score += 1
             reasons.append("BTCが上昇")
@@ -795,9 +739,9 @@ def score_market(market_rows, sector_rows, recent_events, upcoming_events):
             score -= 1
             reasons.append("BTCが下落")
 
-    # USDJPY
+    # USD/JPY
     usdjpy = lookup.get("USD/JPY")
-    if usdjpy and usdjpy["change_pct"] is not None:
+    if usdjpy and usdjpy.get("change_pct") is not None:
         if usdjpy["change_pct"] > 0:
             score += 1
             reasons.append("USD/JPYが上昇")
@@ -900,6 +844,7 @@ def generate_trend_signal(score, market_rows, sector_attention, recent_events, u
 
     return signal, details
 
+
 # =========================================================
 # AI要約
 # =========================================================
@@ -990,7 +935,8 @@ def generate_ai_summary(
         err = f"AI概況の生成中にエラーが発生しました: {e}"
         log_error(err)
         return err
-``
+
+
 # =========================================================
 # CSVログ保存
 # =========================================================
@@ -1114,6 +1060,7 @@ def save_event_log(recent_events, upcoming_events):
                 "release_id": e.get("release_id", ""),
             }
             append_csv_row(EVENT_LOG_FILE, fieldnames, row)
+
 
 # =========================================================
 # HTML
@@ -1301,7 +1248,6 @@ def build_html(market_rows, sector_rows, score, regime, signal, signal_details, 
     """
 
 
-
 # =========================================================
 # メール送信
 # =========================================================
@@ -1329,11 +1275,9 @@ def send_mail(subject, html):
         server.send_message(msg)
 
 
-
 # =========================================================
 # 実行
 # =========================================================
-
 def main():
     errors = []
 
@@ -1388,6 +1332,10 @@ def main():
     else:
         recent_events = fred_payload["past_24h"]
         upcoming_events = fred_payload["next_24h"]
+
+    # 念のため、Excel由来で result が空のものだけ FRED で補完したい場合
+    recent_events = enrich_fred_events_with_results(recent_events)
+    upcoming_events = enrich_fred_events_with_results(upcoming_events)
 
     # 5) スコア算出
     score_result, score_err = safe_execute(
@@ -1487,7 +1435,12 @@ def main():
             signal_details=signal_details,
             reasons=reasons,
             ai_summary=ai_summary,
-            fred_macro_html=fred_macro_html
+            fred_macro_html=build_fred_macro_html({
+                "mode": fred_payload["mode"],
+                "weekly": upcoming_events if fred_payload["mode"] == "monday" else [],
+                "past_24h": recent_events if fred_payload["mode"] != "monday" else [],
+                "next_24h": upcoming_events if fred_payload["mode"] != "monday" else [],
+            })
         ),
         default="<html><body><p>HTML生成失敗</p></body></html>"
     )
