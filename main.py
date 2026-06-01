@@ -207,6 +207,7 @@ def within_this_week(dt):
     end_of_week = start_of_week + timedelta(days=7)
 
     return start_of_week <= dt < end_of_week
+    ``
 
 
 
