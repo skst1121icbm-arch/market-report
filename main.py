@@ -521,26 +521,36 @@ def build_event_result_text(actual, forecast, previous, note=None):
 
 
 def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
+    print("LOAD FILE PATH:", file_path)
+    print("ABS PATH:", os.path.abspath(file_path))
+    print("EXISTS:", os.path.exists(file_path))
+
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"{file_path} が見つかりません。")
 
     df = pd.read_excel(file_path, sheet_name=0, header=None, engine="openpyxl")
 
+    print("DF SHAPE:", df.shape)
+
     events = []
     current_date = None
 
     for _, row in df.iterrows():
-        c0 = normalize_excel_value(row.iloc[0] if len(row) > 0 else None)
-        c1 = normalize_excel_value(row.iloc[1] if len(row) > 1 else None)
-        c2 = normalize_excel_value(row.iloc[2] if len(row) > 2 else None)
-        c3 = normalize_excel_value(row.iloc[3] if len(row) > 3 else None)
-        c4 = normalize_excel_value(row.iloc[4] if len(row) > 4 else None)
-        c5 = normalize_excel_value(row.iloc[5] if len(row) > 5 else None)
-        c6 = normalize_excel_value(row.iloc[6] if len(row) > 6 else None)
+        raw = [normalize_excel_value(x) for x in row.tolist()[:8]]
+        print("ROW RAW:", raw)
+
+        c0 = raw[0] if len(raw) > 0 else None
+        c1 = raw[1] if len(raw) > 1 else None
+        c2 = raw[2] if len(raw) > 2 else None
+        c3 = raw[3] if len(raw) > 3 else None
+        c4 = raw[4] if len(raw) > 4 else None
+        c5 = raw[5] if len(raw) > 5 else None
+        c6 = raw[6] if len(raw) > 6 else None
 
         # 日付行
-        if c0 and "/" in c0:
-            parsed_date = parse_excel_date_label(c0)
+        if c0 and "/" in str(c0):
+            parsed_date = parse_excel_date_label(str(c0))
+            print("DATE ROW:", c0, "->", parsed_date)
             if parsed_date:
                 current_date = parsed_date
             continue
@@ -560,7 +570,7 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
 
         event_dt = current_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
-        stars = c2.count("★") if c2 else 0
+        stars = str(c2).count("★") if c2 else 0
         importance_label = infer_importance_label_from_stars(stars)
         country = classify_country_from_name(c3)
 
@@ -575,6 +585,8 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
 
         status = "upcoming" if event_dt >= now_jst() else "recent"
 
+        print("APPEND EVENT:", event_dt, c3, stars)
+
         events.append({
             "release_id": None,
             "name": c3,
@@ -588,8 +600,8 @@ def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
             "result": result_text,
         })
 
+    print("TOTAL APPENDED EVENTS:", len(events))
     return events
-
 
 # =========================================================
 # FRED表示用ペイロード
