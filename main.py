@@ -1,6 +1,7 @@
 import os
 import csv
 import smtplib
+import pandas as pd
 from email.mime.text import MIMEText
 from email.utils import formataddr
 from datetime import datetime, timedelta, timezone
@@ -123,6 +124,9 @@ ERROR_LOG_FILE = "market_ai_error.log"
 # HTML保存先（デバッグ用）
 LATEST_HTML_FILE = "market_ai_latest_report.html"
 
+# Excel スケジュール
+EXCEL_CALENDAR_FILE = "スケジュール.xlsx"
+
 
 # =========================================================
 # 共通
@@ -197,11 +201,9 @@ def within_next_24h(dt):
 def within_this_week(dt):
     now = now_jst()
 
-    # ✅ 今週の月曜 00:00
     start_of_week = now - timedelta(days=now.weekday())
     start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # ✅ 来週の月曜 00:00
     end_of_week = start_of_week + timedelta(days=7)
 
     return start_of_week <= dt < end_of_week
@@ -465,7 +467,204 @@ def enrich_fred_events_with_results(events):
         enriched.append(x)
     return enriched
 
+# =========================================================
+# Excel スケジュール読込
+# =========================================================
+def normalize_excel_value(v):
+    if v is None:
+        return None
+    if isinstance(v, float) and pd.isna(v):
+        return None
+    s = str(v).strip()
+    if s in ["", "-", "nan", "NaN", "None"]:
+        return None
+    return s
 
+
+def parse_excel_date_label(date_label):
+    """
+    例:
+      06/01(月)
+      06/24(水)
+    -> 今年の JST datetime(date only)
+    """
+    s = normalize_excel_value(date_label)
+    if not s:
+        return None
+
+    # 06/01(月) -> 06/01
+    s = s.split("(")[0].strip()
+    try:
+        year = now_jst().year
+        dt = datetime.strptime(f"{year}/{s}", "%Y/%m/%d")
+        return dt.replace(tzinfo=JST)
+    except Exception:
+        return None
+
+
+def parse_excel_time_label(time_label):
+    """
+    例:
+      23:00:00
+      08:50:00
+      -
+    """
+    s = normalize_excel_value(time_label)
+    if not s:
+        return None
+
+    try:
+        parts = s.split(":")
+        if len(parts) >= 2:
+            hour = int(parts[0])
+            minute = int(parts[1])
+            return hour, minute
+    except Exception:
+        return None
+
+    return None
+
+
+def classify_country_from_name(name):
+    """
+    Excel上は日米混在しているので、最低限のルールで country を付ける。
+    """
+    jp_keywords = [
+        "日銀", "全国消費者物価", "東京消費者物価", "景気一致指数", "景気先行指数",
+        "機械受注", "通関ベース貿易収支", "毎月勤労統計", "家計調査", "国内企業物価",
+        "マネタリーベース", "マネーストック", "景気ウォッチャー", "第3次産業活動指数",
+        "完全失業率", "有効求人倍率", "鉱工業生産", "小売業販売額", "百貨店・スーパー販売額",
+        "国際収支", "GDPデフレータ"
+    ]
+    us_keywords = [
+        "ISM", "ADP", "原油在庫", "ガソリン在庫", "留出油在庫", "新規失業保険申請件数",
+        "失業率", "非農業部門雇用者数", "平均時給", "貿易収支", "卸売在庫", "中古住宅販売件数",
+        "消費者物価指数", "生産者物価指数", "ミシガン大学", "ニューヨーク連銀", "住宅建築許可件数",
+        "住宅着工件数", "輸入物価指数", "小売売上高", "企業在庫", "フィラデルフィア連銀",
+        "FRB政策金利", "対米証券投資", "リッチモンド連銀", "コンファレンスボード",
+        "シカゴ購買部協会", "耐久財受注", "個人所得", "個人支出", "PCE", "NAHB", "MBA住宅ローン"
+    ]
+
+    if any(k in name for k in jp_keywords):
+        return "JP"
+    if any(k in name for k in us_keywords):
+        return "US"
+
+    # デフォルトは US 扱い
+    return "US"
+
+
+def infer_importance_label_from_stars(stars):
+    if stars >= 3:
+        return "高"
+    if stars >= 2:
+        return "中"
+    return "低"
+
+
+def build_event_result_text(actual, forecast, previous, note=None):
+    parts = []
+    actual = normalize_excel_value(actual)
+    forecast = normalize_excel_value(forecast)
+    previous = normalize_excel_value(previous)
+    note = normalize_excel_value(note)
+
+    if actual:
+        parts.append(f"結果 {actual}")
+    if forecast:
+        parts.append(f"予想 {forecast}")
+    if previous:
+        parts.append(f"前回 {previous}")
+    if note:
+        parts.append(note)
+
+    return " / ".join(parts) if parts else None
+
+
+def load_events_from_excel(file_path=EXCEL_CALENDAR_FILE):
+    """
+    スケジュール.xlsx を読み込み、イベント一覧に変換する。
+    想定フォーマットは以下の並び:
+      A列: 日付ラベル (06/01(月) など) または空
+      B列: 時刻
+      C列: 重要度(★)
+      D列: 指標名
+      E列: 結果または予想
+      F列: 予想または前回
+      G列: 前回または備考
+      H列以降: 備考があれば連結
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"{file_path} が見つかりません。")
+
+    df = pd.read_excel(file_path, sheet_name=0, header=None, engine="openpyxl")
+
+    events = []
+    current_date = None
+
+    for _, row in df.iterrows():
+        c0 = normalize_excel_value(row.iloc[0] if len(row) > 0 else None)
+        c1 = normalize_excel_value(row.iloc[1] if len(row) > 1 else None)
+        c2 = normalize_excel_value(row.iloc[2] if len(row) > 2 else None)
+        c3 = normalize_excel_value(row.iloc[3] if len(row) > 3 else None)
+        c4 = normalize_excel_value(row.iloc[4] if len(row) > 4 else None)
+        c5 = normalize_excel_value(row.iloc[5] if len(row) > 5 else None)
+        c6 = normalize_excel_value(row.iloc[6] if len(row) > 6 else None)
+
+        # 日付行
+        if c0 and "/" in c0:
+            parsed_date = parse_excel_date_label(c0)
+            if parsed_date:
+                current_date = parsed_date
+            continue
+
+        if current_date is None:
+            continue
+
+        # 指標行の最低条件
+        if not c3:
+            continue
+
+        time_pair = parse_excel_time_label(c1)
+        if time_pair:
+            hour, minute = time_pair
+        else:
+            hour, minute = 0, 0
+
+        event_dt = current_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+        stars = c2.count("★") if c2 else 0
+        importance_label = infer_importance_label_from_stars(stars)
+        country = classify_country_from_name(c3)
+
+        # 備考列を H列以降まで拾う
+        notes = []
+        for idx in range(7, len(row)):
+            v = normalize_excel_value(row.iloc[idx])
+            if v:
+                notes.append(v)
+
+        note_text = " / ".join(notes) if notes else None
+
+        result_text = build_event_result_text(c4, c5, c6, note_text)
+
+        status = "upcoming" if event_dt >= now_jst() else "recent"
+
+        events.append({
+            "release_id": None,
+            "name": c3,
+            "event_dt": event_dt,
+            "event_dt_text": event_dt.strftime("%m/%d %H:%M"),
+            "status": status,
+            "importance_label": importance_label,
+            "impact_score": 8.5 if stars >= 3 else 5.5 if stars >= 2 else 3.0,
+            "country": country,
+            "stars": stars,
+            "result": result_text,
+        })
+
+    return events
+    
 # =========================================================
 # FRED表示用ペイロード
 # =========================================================
@@ -1068,43 +1267,39 @@ def main():
     if market_err:
         errors.append(market_err)
 
-    # 2) FREDイベント取得
-    fred_result, fred_err = safe_execute("FREDイベント取得", fetch_fred_release_dates, default=([], None))
-    if fred_result:
-        fred_events, fred_error = fred_result
-    else:
-        fred_events, fred_error = [], "FREDイベント取得失敗"
-
-    if fred_err:
-        errors.append(fred_err)
-    if fred_error:
-        errors.append(fred_error)
-
-    # 3) FREDイベントに結果を付与
-    fred_events, enrich_err = safe_execute(
-        "FRED結果付与",
-        lambda: enrich_fred_events_with_results(fred_events),
+# 2) 経済指標イベント取得（Excel ベース）
+    fred_events, excel_err = safe_execute(
+        "Excelイベント取得",
+        load_events_from_excel,
         default=[]
     )
-    if enrich_err:
-        errors.append(enrich_err)
+    if excel_err:
+        errors.append(excel_err)
 
-    # 4) 表示用ペイロード作成
+    # 3) 表示用ペイロード作成
     fred_payload, payload_err = safe_execute(
-        "FRED表示用ペイロード作成",
-        lambda: build_fred_email_payload(fred_events or []),
+        "経済指標表示用ペイロード作成",
+        lambda: build_fred_email_payload(fred_events),
         default={"mode": "normal", "weekly": [], "past_24h": [], "next_24h": []}
     )
     if payload_err:
         errors.append(payload_err)
 
     fred_macro_html, macro_err = safe_execute(
-        "FRED HTML生成",
+        "経済指標HTML生成",
         lambda: build_fred_macro_html(fred_payload),
         default="<h3>🗓️ 経済指標</h3><p>なし</p>"
     )
     if macro_err:
         errors.append(macro_err)
+
+    # 4) 内部分析用イベント
+    if fred_payload["mode"] == "monday":
+        recent_events = []
+        upcoming_events = fred_payload["weekly"]
+    else:
+        recent_events = fred_payload["past_24h"]
+        upcoming_events = fred_payload["next_24h"]
 
     # 5) 内部分析用イベント
     if fred_payload["mode"] == "monday":
