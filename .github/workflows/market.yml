@@ -2,9 +2,9 @@ name: Daily Market AI (FRED)
 # restart cron
 on:
   schedule:
-    # JST 08:07 / 08:20（冗長化）
-    - cron: '3 22 * * *'
-    - cron: '15 22 * * *'
+    # JST 07:07 / 07:20
+    - cron: '7 22 * * *'
+    - cron: '20 22 * * *'
   workflow_dispatch:
 
 jobs:
