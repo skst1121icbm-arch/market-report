@@ -1,13 +1,12 @@
 from config.settings import (
     MARKET_SYMBOLS,
     SECTOR_ETFS,
-    EXCEL_CALENDAR_FILE,
     LATEST_HTML_FILE,
 )
 
 # data
 from data.market_data import download_ohlc
-from data.excel_loader import load_events_from_excel
+from data.economic_calendar import fetch_yahoo_economic_events, split_events_for_mail
 
 # logic
 from logic.market_calc import build_rows, summarize_sector_attention
@@ -20,102 +19,157 @@ from output.html_builder import build_html
 from output.mailer import send_mail
 from output.csv_logger import save_daily_log, save_event_log
 
+# utils
+from utils.datetime_utils import now_jst
+from utils.logging_utils import log_error
+
 
 def run():
     print("===== START MARKET AI =====")
 
-    # =========================================
-    # ① データ取得
-    # =========================================
-    symbols = list(MARKET_SYMBOLS.values())
-    sector_symbols = list(SECTOR_ETFS.values())
+    try:
+        now = now_jst()
+        print(f"[INFO] now_jst = {now}")
 
-    market_df = download_ohlc(symbols)
-    sector_df = download_ohlc(sector_symbols)
+        # =========================================
+        # ① 市場データ取得
+        # =========================================
+        symbols = list(MARKET_SYMBOLS.values())
+        sector_symbols = list(SECTOR_ETFS.values())
 
-    events = load_events_from_excel(EXCEL_CALENDAR_FILE)
+        print("[INFO] downloading market data...")
+        market_df = download_ohlc(symbols)
 
-    # =========================================
-    # ② 加工
-    # =========================================
-    market_rows = build_rows(market_df, MARKET_SYMBOLS)
-    sector_rows = build_rows(sector_df, SECTOR_ETFS)
+        print("[INFO] downloading sector data...")
+        sector_df = download_ohlc(sector_symbols)
 
-    sector_attention = summarize_sector_attention(sector_rows)
+        # =========================================
+        # ② データ整形
+        # =========================================
+        print("[INFO] building market rows...")
+        market_rows = build_rows(market_df, MARKET_SYMBOLS)
 
-    recent_events = [e for e in events if e.get("date")]
-    upcoming_events = [e for e in events if not e.get("date")]
+        print("[INFO] building sector rows...")
+        sector_rows = build_rows(sector_df, SECTOR_ETFS)
 
-    # =========================================
-    # ③ スコア
-    # =========================================
-    score, reasons = score_market(
-        market_rows,
-        sector_rows,
-        recent_events,
-        upcoming_events,
-    )
+        print("[INFO] summarizing sector attention...")
+        sector_attention = summarize_sector_attention(sector_rows)
 
-    regime = classify_regime(score)
+        # =========================================
+        # ③ 経済指標取得（Yahoo Finance）
+        # =========================================
+        print("[INFO] fetching economic events from Yahoo Finance...")
+        events = fetch_yahoo_economic_events(limit=100)
 
-    # =========================================
-    # ④ シグナル
-    # =========================================
-    signal, signal_details = generate_trend_signal(
-        score,
-        market_rows,
-        sector_attention,
-        recent_events,
-        upcoming_events,
-    )
+        print(f"[INFO] total economic events fetched = {len(events)}")
 
-    # =========================================
-    # ⑤ AI
-    # =========================================
-    ai_summary = generate_ai_summary(
-        market_rows,
-        sector_rows,
-        recent_events,
-        upcoming_events,
-        score,
-        regime,
-        signal,
-        signal_details,
-        reasons,
-    )
+        macro_payload = split_events_for_mail(events, now)
 
-    # =========================================
-    # ⑥ HTML生成
-    # =========================================
-    html = build_html(
-        market_rows,
-        sector_rows,
-        score,
-        regime,
-        signal,
-        signal_details,
-        reasons,
-        ai_summary,
-    )
+        if macro_payload["mode"] == "monday":
+            print("[INFO] monday mode detected")
+            recent_events = []
+            upcoming_events = macro_payload["weekly_upcoming"]
+        else:
+            print("[INFO] daily mode detected")
+            recent_events = macro_payload["yesterday_events"]
+            upcoming_events = macro_payload["today_events"]
 
-    # ✅ ここが追加ポイント（最重要）
-    with open(LATEST_HTML_FILE, "w", encoding="utf-8") as f:
-        f.write(html)
+        print(f"[INFO] recent_events = {len(recent_events)}")
+        print(f"[INFO] upcoming_events = {len(upcoming_events)}")
 
-    print(f"HTML saved to {LATEST_HTML_FILE}")
+        # =========================================
+        # ④ スコア計算
+        # =========================================
+        print("[INFO] scoring market...")
+        score, reasons = score_market(
+            market_rows,
+            sector_rows,
+            recent_events,
+            upcoming_events,
+        )
 
-    # =========================================
-    # ⑦ 出力
-    # =========================================
-    send_mail("マーケットレポート", html)
+        regime = classify_regime(score)
 
-    save_daily_log(score, regime, signal)
-    save_event_log(events)
+        print(f"[INFO] score = {score}")
+        print(f"[INFO] regime = {regime}")
 
-    print("===== END MARKET AI =====")
+        # =========================================
+        # ⑤ シグナル生成
+        # =========================================
+        print("[INFO] generating trend signal...")
+        signal, signal_details = generate_trend_signal(
+            score,
+            market_rows,
+            sector_attention,
+            recent_events,
+            upcoming_events,
+        )
 
-    return {
-        "score": score,
-        "regime": regime,
-        "signal": signal,
-    }
+        print(f"[INFO] signal = {signal}")
+
+        # =========================================
+        # ⑥ AI概況生成
+        # =========================================
+        print("[INFO] generating ai summary...")
+        ai_summary = generate_ai_summary(
+            market_rows,
+            sector_rows,
+            recent_events,
+            upcoming_events,
+            score,
+            regime,
+            signal,
+            signal_details,
+            reasons,
+        )
+
+        # =========================================
+        # ⑦ HTML生成
+        # =========================================
+        print("[INFO] building html...")
+        html = build_html(
+            market_rows=market_rows,
+            sector_rows=sector_rows,
+            score=score,
+            regime=regime,
+            signal=signal,
+            signal_details=signal_details,
+            reasons=reasons,
+            ai_summary=ai_summary,
+            macro_payload=macro_payload,
+        )
+
+        # HTML保存
+        print(f"[INFO] saving html to {LATEST_HTML_FILE} ...")
+        with open(LATEST_HTML_FILE, "w", encoding="utf-8") as f:
+            f.write(html)
+
+        print(f"[INFO] HTML saved to {LATEST_HTML_FILE}")
+
+        # =========================================
+        # ⑧ メール送信
+        # =========================================
+        print("[INFO] sending email...")
+        send_mail("マーケットレポート", html)
+
+        # =========================================
+        # ⑨ ログ保存
+        # =========================================
+        print("[INFO] saving logs...")
+        save_daily_log(score, regime, signal)
+        save_event_log(events)
+
+        print("===== END MARKET AI =====")
+
+        return {
+            "score": score,
+            "regime": regime,
+            "signal": signal,
+            "event_count": len(events),
+        }
+
+    except Exception as e:
+        err_msg = f"runner.py 実行エラー: {e}"
+        print(f"[ERROR] {err_msg}")
+        log_error(err_msg)
+        raise
