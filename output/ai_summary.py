@@ -40,7 +40,7 @@ upcoming_lines = [
     for e in upcoming_events or []
 ]
 
-    prompt = f"""
+prompt = f"""
 あなたは日本語で金融市場サマリーを書くアナリストです。
 以下のデータをもとに自然な日本語で概況を書いてください。
 
