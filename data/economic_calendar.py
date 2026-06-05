@@ -5,27 +5,7 @@ from datetime import datetime, timedelta
 from config.settings import JST
 
 
-COUNTRY_MAP = {
-    "US": "US",
-    "United States": "US",
-    "USA": "US",
-    "JP": "JP",
-    "Japan": "JP",
-    "日本": "JP",
-}
-
-
-def _normalize_country(v):
-    if v is None:
-        return None
-    s = str(v).strip()
-    return COUNTRY_MAP.get(s, s)
-
-
 def _pick_value(row, candidates, default=None):
-    """
-    row から candidate column を順番に探して、最初の有効値を返す
-    """
     for c in candidates:
         if c in row and pd.notna(row[c]):
             return row[c]
@@ -33,18 +13,12 @@ def _pick_value(row, candidates, default=None):
 
 
 def _to_jst_datetime(v):
-    """
-    Yahoo / yfinance 側の日時が UTC / naive / string で来ても、
-    できるだけ JST datetime にそろえる
-    """
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return None
 
     try:
-        # まず UTC として解釈を試す
         dt = pd.to_datetime(v, utc=True, errors="coerce")
         if pd.isna(dt):
-            # UTC前提で解釈できない場合は通常 parse
             dt = pd.to_datetime(v, errors="coerce")
             if pd.isna(dt):
                 return None
@@ -59,61 +33,45 @@ def _to_jst_datetime(v):
 
 
 def _importance_to_label(importance_raw):
-    """
-    importance / impact / priority 的な値を 高・中・低 に寄せる
-    """
     if importance_raw is None:
         return "中"
 
     s = str(importance_raw).strip().lower()
 
-    if s in ["3", "high", "high impact"] or "high" in s:
+    if "high" in s or s in ["3"]:
         return "高"
-    if s in ["1", "low", "low impact"] or "low" in s:
+    if "low" in s or s in ["1"]:
         return "低"
 
     return "中"
 
 
-def _sanitize_metric_value(v):
-    """
-    nan / 空文字は None にそろえる
-    """
+def _sanitize(v):
     if v is None:
         return None
-
     s = str(v).strip()
     if s == "" or s.lower() == "nan":
         return None
-
     return v
 
 
-def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=100):
-    """
-    Yahoo Finance / yfinance の economic events calendar を取得し、
-    日本（JP）・米国（US）だけに絞って標準化した list[dict] を返す。
-
-    戻り値の各 event 例:
-    {
-        "event_dt_jst": datetime | None,
-        "event_date_jst": date | None,
-        "country": "JP" | "US",
-        "event_name": str,
-        "importance_label": "高" | "中" | "低",
-        "actual": Any,
-        "forecast": Any,
-        "previous": Any,
-    }
-    """
+# =========================
+# ✅ Yahoo経済指標取得（修正版）
+# =========================
+def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=200):
 
     if start_date is None:
         start_date = datetime.now(JST).date()
 
+    # ✅ ① 日付範囲を14日に拡張
     if end_date is None:
-        end_date = start_date + timedelta(days=7)
+        end_date = start_date + timedelta(days=14)
+
+    print(f"[DEBUG] fetch range: {start_date} → {end_date}")
 
     cal = yf.Calendars(start=start_date, end=end_date)
+
+    # ✅ ② limit拡張
     df = cal.get_economic_events_calendar(
         start=start_date,
         end=end_date,
@@ -123,10 +81,13 @@ def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=100):
     )
 
     if df is None or len(df) == 0:
+        print("[WARN] Yahoo returned empty DataFrame")
         return []
 
     if isinstance(df, pd.Series):
         df = df.to_frame().T
+
+    print(f"[DEBUG] RAW rows = {len(df)}")
 
     events = []
 
@@ -138,68 +99,52 @@ def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=100):
             )
         )
 
-        country = _normalize_country(
-            _pick_value(row, ["country", "region", "currency", "locale"])
-        )
-
-        # 日本・米国のみに限定
-        if country not in ["US", "JP"]:
-            continue
+        # ✅ ③ countryフィルタ OFF（重要）
+        country = _pick_value(row, ["country", "region", "currency", "locale"])
 
         event_name = _pick_value(row, ["event", "name", "title", "eventName"], "")
 
-        actual = _sanitize_metric_value(
-            _pick_value(row, ["actual", "actualValue"])
-        )
-        forecast = _sanitize_metric_value(
-            _pick_value(row, ["forecast", "consensus", "expected"])
-        )
-        previous = _sanitize_metric_value(
-            _pick_value(row, ["previous", "prior"])
-        )
+        actual = _sanitize(_pick_value(row, ["actual", "actualValue"]))
+        forecast = _sanitize(_pick_value(row, ["forecast", "consensus", "expected"]))
+        previous = _sanitize(_pick_value(row, ["previous", "prior"]))
 
         importance_label = _importance_to_label(
             _pick_value(row, ["importance", "impact", "priority"])
         )
 
-        events.append(
-            {
-                "event_dt_jst": event_dt,
-                "event_date_jst": event_dt.date() if event_dt else None,
-                "country": country,
-                "event_name": str(event_name) if event_name is not None else "",
-                "importance_label": importance_label,
-                "actual": actual,
-                "forecast": forecast,
-                "previous": previous,
-            }
-        )
+        events.append({
+            "event_dt_jst": event_dt,
+            "event_date_jst": event_dt.date() if event_dt else None,
+            "country": str(country),
+            "event_name": str(event_name) if event_name else "",
+            "importance_label": importance_label,
+            "actual": actual,
+            "forecast": forecast,
+            "previous": previous,
+        })
 
-    return sorted(
+    events_sorted = sorted(
         events,
         key=lambda x: x["event_dt_jst"] or datetime.max.replace(tzinfo=JST),
     )
 
+    print(f"[DEBUG] normalized events = {len(events_sorted)}")
 
+    return events_sorted
+
+
+# =========================
+# ✅ メール用分割
+# =========================
 def split_events_for_mail(events, now_jst):
-    """
-    メール用に分割する。
 
-    月曜:
-        mode='monday'
-        weekly_upcoming に JST基準の今週イベントを入れる
-
-    月曜以外:
-        mode='daily'
-        yesterday_events に JST基準の昨日イベント
-        today_events に JST基準の今日イベント
-    """
     today = now_jst.date()
     yesterday = today - timedelta(days=1)
 
     monday = today - timedelta(days=today.weekday())
     sunday = monday + timedelta(days=6)
 
+    # 月曜モード
     if now_jst.weekday() == 0:
         weekly_upcoming = [
             e for e in events
@@ -213,6 +158,7 @@ def split_events_for_mail(events, now_jst):
             "today_events": [],
         }
 
+    # 通常日
     yesterday_events = [
         e for e in events
         if e.get("event_date_jst") == yesterday
