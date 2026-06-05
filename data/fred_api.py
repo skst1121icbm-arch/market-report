@@ -1,49 +1,52 @@
 import os
 import requests
-from datetime import datetime
-from config.settings import FRED_BASE_URL, MAJOR_RELEASE_KEYWORDS
+
+from config.settings import FRED_BASE_URL, FRED_SERIES_IDS
+
 
 def fred_get(path, params=None):
     api_key = os.getenv("FRED_API_KEY")
+
     if not api_key:
-        raise ValueError("FRED_API_KEY が未設定です。")
+        raise ValueError("FRED_API_KEY 未設定")
 
     params = params or {}
     params["api_key"] = api_key
     params["file_type"] = "json"
 
     url = f"{FRED_BASE_URL}/{path}"
-    res = requests.get(url, params=params)
+
+    res = requests.get(url, params=params, timeout=20)
     res.raise_for_status()
+
     return res.json()
 
-def is_major_release(release_name):
-    s = str(release_name)
-    return any(k.lower() in s.lower() for k in MAJOR_RELEASE_KEYWORDS)
 
-def parse_date_only(date_str):
-    try:
-        return datetime.strptime(date_str, "%Y-%m-%d")
-    except Exception:
-        return None
-
-def fetch_fred_latest_result(series_id):
+def fetch_latest(series_id):
     try:
         data = fred_get(
             "series/observations",
             {
                 "series_id": series_id,
                 "sort_order": "desc",
-                "limit": 2,
-            }
+                "limit": 10,
+            },
         )
-        obs = data.get("observations", [])
-        vals = [o for o in obs if o.get("value") not in [None, ".", "NaN", "nan"]]
 
-        if not vals:
-            return None
+        for o in data.get("observations", []):
+            v = o.get("value")
 
-        return vals[0].get("value")
+            if v not in [None, ".", "NaN", ""]:
+                return float(v)
 
     except Exception:
         return None
+
+    return None
+
+
+def fetch_us_rate_extras():
+    return {
+        "米2年債利回り": fetch_latest(FRED_SERIES_IDS["米2年債利回り"]),
+        "実質金利(10Y)": fetch_latest(FRED_SERIES_IDS["実質金利(10Y)"]),
+    }
