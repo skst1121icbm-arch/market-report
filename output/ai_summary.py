@@ -69,4 +69,3 @@ def generate_ai_summary(
         return res.choices[0].message.content
     except Exception:
         return "AI要約の生成に失敗しました。"
-``
