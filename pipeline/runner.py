@@ -1,4 +1,9 @@
-from config.settings import MARKET_SYMBOLS, SECTOR_ETFS, EXCEL_CALENDAR_FILE
+from config.settings import (
+    MARKET_SYMBOLS,
+    SECTOR_ETFS,
+    EXCEL_CALENDAR_FILE,
+    LATEST_HTML_FILE,
+)
 
 # data
 from data.market_data import download_ohlc
@@ -17,6 +22,8 @@ from output.csv_logger import save_daily_log, save_event_log
 
 
 def run():
+    print("===== START MARKET AI =====")
+
     # =========================================
     # ① データ取得
     # =========================================
@@ -29,26 +36,18 @@ def run():
     events = load_events_from_excel(EXCEL_CALENDAR_FILE)
 
     # =========================================
-    # ② データ加工
+    # ② 加工
     # =========================================
     market_rows = build_rows(market_df, MARKET_SYMBOLS)
     sector_rows = build_rows(sector_df, SECTOR_ETFS)
 
     sector_attention = summarize_sector_attention(sector_rows)
 
-    # イベント区分（簡易版）
-    recent_events = []
-    upcoming_events = []
-
-    for e in events:
-        # 非厳密な分類（後で改善可能）
-        if e.get("date"):
-            recent_events.append(e)
-        else:
-            upcoming_events.append(e)
+    recent_events = [e for e in events if e.get("date")]
+    upcoming_events = [e for e in events if not e.get("date")]
 
     # =========================================
-    # ③ スコア計算
+    # ③ スコア
     # =========================================
     score, reasons = score_market(
         market_rows,
@@ -60,7 +59,7 @@ def run():
     regime = classify_regime(score)
 
     # =========================================
-    # ④ シグナル生成
+    # ④ シグナル
     # =========================================
     signal, signal_details = generate_trend_signal(
         score,
@@ -71,7 +70,7 @@ def run():
     )
 
     # =========================================
-    # ⑤ AI要約
+    # ⑤ AI
     # =========================================
     ai_summary = generate_ai_summary(
         market_rows,
@@ -99,6 +98,12 @@ def run():
         ai_summary,
     )
 
+    # ✅ ここが追加ポイント（最重要）
+    with open(LATEST_HTML_FILE, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    print(f"HTML saved to {LATEST_HTML_FILE}")
+
     # =========================================
     # ⑦ 出力
     # =========================================
@@ -106,6 +111,8 @@ def run():
 
     save_daily_log(score, regime, signal)
     save_event_log(events)
+
+    print("===== END MARKET AI =====")
 
     return {
         "score": score,
