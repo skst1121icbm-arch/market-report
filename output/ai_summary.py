@@ -83,6 +83,7 @@ def generate_ai_summary(
 - 500〜900文字
 - 内容ごとに改行する
 - 断定しすぎず市場コメントとして書く
+- 「フロー分析」を必ず1段落入れる
 - 最後にトレンドシグナルの意味を短く書く
 
 ■ 必ず触れる項目
@@ -94,7 +95,9 @@ def generate_ai_summary(
 - セクター強弱
 - 注目テーマ
 - 経済指標（直近結果と今日の予定）
-- Breadth / ETFフロー / Put/Call があれば反映
+- Breadth
+- ETFフロー
+- Put/Call / オプションセンチメント
 
 ■ 市場データ
 {chr(10).join(market_lines)}
