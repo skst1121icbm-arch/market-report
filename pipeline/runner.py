@@ -61,10 +61,23 @@ def run():
         print("[INFO] fetching economic events from Yahoo Finance...")
         events = fetch_yahoo_economic_events(limit=100)
 
-        print(f"[INFO] total economic events fetched = {len(events)}")
+        # ===== DEBUG START =====
+        print(f"[DEBUG] events_total = {len(events)}")
+
+        for i, e in enumerate(events[:5], start=1):
+            print(f"[DEBUG] EVENT SAMPLE {i}: {e}")
+        # ===== DEBUG END =====
 
         macro_payload = split_events_for_mail(events, now)
 
+        # ===== DEBUG START =====
+        print(f"[DEBUG] macro_payload_mode = {macro_payload['mode']}")
+        print(f"[DEBUG] yesterday_events = {len(macro_payload['yesterday_events'])}")
+        print(f"[DEBUG] today_events = {len(macro_payload['today_events'])}")
+        print(f"[DEBUG] weekly_upcoming = {len(macro_payload['weekly_upcoming'])}")
+        # ===== DEBUG END =====
+
+        # AI・score に渡す用
         if macro_payload["mode"] == "monday":
             print("[INFO] monday mode detected")
             recent_events = []
@@ -76,6 +89,13 @@ def run():
 
         print(f"[INFO] recent_events = {len(recent_events)}")
         print(f"[INFO] upcoming_events = {len(upcoming_events)}")
+
+        # 必要ならここでもサンプル確認
+        for i, e in enumerate(recent_events[:3], start=1):
+            print(f"[DEBUG] RECENT EVENT {i}: {e}")
+
+        for i, e in enumerate(upcoming_events[:3], start=1):
+            print(f"[DEBUG] UPCOMING EVENT {i}: {e}")
 
         # =========================================
         # ④ スコア計算
@@ -106,6 +126,7 @@ def run():
         )
 
         print(f"[INFO] signal = {signal}")
+        print(f"[INFO] signal_details = {signal_details}")
 
         # =========================================
         # ⑥ AI概況生成
@@ -155,7 +176,7 @@ def run():
         # =========================================
         # ⑨ ログ保存
         # =========================================
-        print("[INFO] saving logs...")
+        print("[INFO] saving csv logs...")
         save_daily_log(score, regime, signal)
         save_event_log(events)
 
