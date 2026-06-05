@@ -8,6 +8,8 @@ from config.settings import (
 from data.market_data import download_ohlc
 from data.economic_calendar import fetch_minkabu_economic_events, split_events_for_mail
 
+events = fetch_minkabu_economic_events()
+
 # logic
 from logic.market_calc import build_rows, summarize_sector_attention
 from logic.scoring import score_market, classify_regime
