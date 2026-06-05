@@ -16,6 +16,7 @@ def format_change(change):
 
 def build_rows(df, symbol_map):
     rows = []
+
     for label, symbol in symbol_map.items():
         curr, prev = get_close_pair(df, symbol)
         change = calc_change_pct(curr, prev)
@@ -24,12 +25,14 @@ def build_rows(df, symbol_map):
             {
                 "label": label,
                 "symbol": symbol,
-                "current": curr,
-                "previous": prev,
-                "change_pct": change,
+                "value": curr,            # 実際の値
+                "prev_value": prev,
+                "change_pct": change,     # 数値としての前日比%
+                "change": change,         # 互換用
                 "change_text": format_change(change),
             }
         )
+
     return rows
 
 
