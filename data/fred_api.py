@@ -6,7 +6,6 @@ from config.settings import FRED_BASE_URL, FRED_SERIES_IDS
 
 def fred_get(path, params=None):
     api_key = os.getenv("FRED_API_KEY")
-
     if not api_key:
         raise ValueError("FRED_API_KEY 未設定")
 
@@ -35,7 +34,6 @@ def fetch_latest(series_id):
 
         for o in data.get("observations", []):
             v = o.get("value")
-
             if v not in [None, ".", "NaN", ""]:
                 return float(v)
 
