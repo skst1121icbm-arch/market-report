@@ -52,7 +52,7 @@ def run():
     rate_extras = fetch_us_rate_extras()
 
     # =========================
-    # ④ 内部データ
+    # ④ 市場内部データ
     # =========================
     breadth = fetch_market_breadth()
     etf_flows = fetch_etf_flows()
@@ -132,7 +132,7 @@ def run():
         f.write(html)
 
     # =========================
-    # ⑩ メール
+    # ⑩ メール送信
     # =========================
     send_mail("Daily Market Report", html)
 
@@ -141,4 +141,5 @@ def run():
     return {
         "score": score,
         "regime": regime,
+        "breadth": breadth,
     }
