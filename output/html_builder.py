@@ -1,105 +1,31 @@
 from utils.datetime_utils import now_jst
 
 
-# =========================
-# 改行変換（AI概況用）
-# =========================
-def nl2br(text):
-    if not text:
-        return ""
-    return str(text).replace("\n", "<br>")
+# 数値フォーマット
+def fmt(v):
+    try:
+        return f"{float(v):.2f}"
+    except:
+        return "N/A"
 
 
-# =========================
-# 市場テーブル
-# =========================
-def build_market_table(rows):
-    if not rows:
-        return "<p>なし</p>"
-
-    html = "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse: collapse;'>"
-    html += "<tr><th>項目</th><th>変化</th></tr>"
-
+def find(label, rows):
     for r in rows:
-        html += f"<tr><td>{r['label']}</td><td>{r.get('change_text', 'N/A')}</td></tr>"
-
-    html += "</table>"
-    return html
-
-
-# =========================
-# 経済指標テーブル
-# =========================
-def build_event_table(events, title):
-    if not events:
-        return f"<h4>{title}</h4><p>なし</p>"
-
-    html = f"<h4>{title}</h4>"
-    html += "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse: collapse;'>"
-
-    html += (
-        "<tr>"
-        "<th>時刻(JST)</th>"
-        "<th>国</th>"
-        "<th>指標名</th>"
-        "<th>重要度</th>"
-        "<th>予想</th>"
-        "<th>結果</th>"
-        "<th>前回</th>"
-        "</tr>"
-    )
-
-    for e in events:
-        dt = e.get("event_dt_jst")
-        time_str = dt.strftime("%m/%d %H:%M") if dt else "-"
-
-        if e.get("country") == "US":
-            country = "米国"
-        elif e.get("country") == "JP":
-            country = "日本"
-        else:
-            country = e.get("country", "")
-
-        forecast = e.get("forecast") if e.get("forecast") is not None else "-"
-        actual = e.get("actual") if e.get("actual") is not None else "-"
-        previous = e.get("previous") if e.get("previous") is not None else "-"
-
-        html += (
-            "<tr>"
-            f"<td>{time_str}</td>"
-            f"<td>{country}</td>"
-            f"<td>{e.get('event_name', '')}</td>"
-            f"<td>{e.get('importance_label', '')}</td>"
-            f"<td>{forecast}</td>"
-            f"<td>{actual}</td>"
-            f"<td>{previous}</td>"
-            "</tr>"
-        )
-
-    html += "</table>"
-    return html
+        if r["label"] == label:
+            return r
+    return None
 
 
-# =========================
-# 経済指標セクション
-# =========================
-def build_macro_html(macro_payload):
-    if macro_payload["mode"] == "monday":
-        return (
-            "<h3>■ 日本・米国の経済指標（今週予定）</h3>"
-            + build_event_table(macro_payload["weekly_upcoming"], "今週の予定")
-        )
-
+def get_val(label, rows):
+    r = find(label, rows)
+    if not r:
+        return ("N/A", "N/A")
     return (
-        "<h3>■ 日本・米国の経済指標</h3>"
-        + build_event_table(macro_payload["yesterday_events"], "昨日の結果（JST基準）")
-        + build_event_table(macro_payload["today_events"], "今日の予定／結果（JST基準）")
+        fmt(r.get("value")),
+        r.get("change_text", "N/A"),
     )
 
 
-# =========================
-# メインHTML
-# =========================
 def build_html(
     market_rows,
     sector_rows,
@@ -111,35 +37,126 @@ def build_html(
     ai_summary,
     macro_payload,
 ):
+
     today = now_jst().strftime("%Y-%m-%d")
 
+    # =========================
+    # 市場
+    # =========================
+    sp_v, sp_c = get_val("S&P500", market_rows)
+    nd_v, nd_c = get_val("NASDAQ", market_rows)
+    dow_v, dow_c = get_val("NYダウ", market_rows)
+    r2k_v, r2k_c = get_val("ラッセル2000", market_rows)
+    nikkei_v, nikkei_c = get_val("日経平均", market_rows)
+
+    # =========================
+    # 金利
+    # =========================
+    y10_v, y10_c = get_val("米10年金利", market_rows)
+    y2_v, y2_c = get_val("米2年金利", market_rows)
+
+    try:
+        spread = float(y10_v) - float(y2_v)
+        spread = f"{spread:.2f}"
+    except:
+        spread = "N/A"
+
+    # =========================
+    # 為替
+    # =========================
+    dxy_v, dxy_c = get_val("DXY", market_rows)
+    uj_v, uj_c = get_val("USD/JPY", market_rows)
+    eu_v, eu_c = get_val("EUR/USD", market_rows)
+
+    # =========================
+    # ボラ
+    # =========================
+    vix_v, vix_c = get_val("VIX", market_rows)
+
+    # =========================
+    # コモディティ
+    # =========================
+    oil_v, oil_c = get_val("原油", market_rows)
+    gold_v, gold_c = get_val("ゴールド", market_rows)
+    copper_v, copper_c = get_val("銅", market_rows)
+
+    # =========================
+    # セクター
+    # =========================
+    strong = [r["label"] for r in sector_rows if r["change"] > 0]
+    weak = [r["label"] for r in sector_rows if r["change"] < 0]
+
+    # =========================
+    # 経済指標
+    # =========================
+    def ev(e):
+        t = e["event_dt_jst"].strftime("%m/%d %H:%M") if e.get("event_dt_jst") else "-"
+        return f"{t} {e['event_name']}（予想:{e['forecast']} / 結果:{e['actual']}）"
+
+    y_events = "<br>".join([ev(e) for e in macro_payload["yesterday_events"]]) or "なし"
+    t_events = "<br>".join([ev(e) for e in macro_payload["today_events"]]) or "なし"
+
+    # =========================
+    # HTML
+    # =========================
     html = f"""
     <html>
-    <body>
-        <h2>📊 市場レポート ({today})</h2>
+    <body style="font-family:Arial; line-height:1.6">
+    <h2>📊 Daily Market Checklist ({today})</h2>
 
-        <h3>■ 市場</h3>
-        {build_market_table(market_rows)}
+    <h3>🕒 ① マーケット</h3>
+    S&P500: {sp_v} ({sp_c})<br>
+    NASDAQ: {nd_v} ({nd_c})<br>
+    Dow: {dow_v} ({dow_c})<br>
+    Russell2000: {r2k_v} ({r2k_c})<br>
+    日経平均: {nikkei_v} ({nikkei_c})
 
-        <h3>■ セクター</h3>
-        {build_market_table(sector_rows)}
+    <p><b>👉 一言まとめ：</b> {signal}</p>
 
-        {build_macro_html(macro_payload)}
+    <h3>🏦 ② 金利</h3>
+    10年: {y10_v} ({y10_c})<br>
+    2年: {y2_v} ({y2_c})<br>
+    長短差: {spread}
 
-        <h3>■ レジーム</h3>
-        <p>{regime}（Score: {score}）</p>
+    <h3>💱 ③ 為替</h3>
+    DXY: {dxy_v} ({dxy_c})<br>
+    USD/JPY: {uj_v} ({uj_c})<br>
+    EUR/USD: {eu_v} ({eu_c})
 
-        <h3>■ トレンドシグナル</h3>
-        <p>{signal}</p>
-        <p>{" / ".join(signal_details)}</p>
+    <h3>😨 ④ ボラ</h3>
+    VIX: {vix_v} ({vix_c})
 
-        <h3>■ 理由</h3>
-        <p>{" / ".join(reasons)}</p>
+    <h3>🛢️ ⑤ コモディティ</h3>
+    原油: {oil_v} ({oil_c})<br>
+    ゴールド: {gold_v} ({gold_c})<br>
+    銅: {copper_v} ({copper_c})
 
-        <h3>■ AI概況</h3>
-        <div style="line-height: 1.9;">
-            {nl2br(ai_summary)}
-        </div>
+    <h3>🧭 ⑥ セクター</h3>
+    強い: {", ".join(strong)}<br>
+    弱い: {", ".join(weak)}
+
+    <h3>📊 ⑦ 市場内部（Breadth）</h3>
+    Adv/Dec: データ未取得<br>
+    上昇比率: 未取得<br>
+    新高値/新安値: 未取得<br>
+    👉 状態: データ取得未実装（今後拡張可）
+
+    <h3>🎯 注目テーマ</h3>
+    AI / データセンター / 半導体 / エネルギー / ドローン
+
+    <h3>🧠 AI総括</h3>
+    {ai_summary}
+
+    <h3>🗓️ 経済指標</h3>
+    <b>昨日</b><br>{y_events}<br>
+    <b>今日</b><br>{t_events}
+
+    <h3>📊 スコア</h3>
+    {score} ({regime})
+
+    <h3>📌 理由</h3>
+    {"<br>".join(reasons)}
+
     </body>
     </html>
     """
