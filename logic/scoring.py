@@ -305,7 +305,7 @@ def score_market(
         score += 1 if nikkei > 0 else -1 if nikkei < 0 else 0
         reasons.append(f"日経平均 {'上昇' if nikkei > 0 else '下落' if nikkei < 0 else '横ばい'}（{nikkei:.2f}%）")
 
-    # ボラ
+    # VIX
     vix = ch("VIX")
     if vix is not None:
         if vix >= 5:
@@ -351,24 +351,23 @@ def score_market(
     score += b_score
     reasons.extend(b_reasons)
 
-    # ETFフロー
+    # ETF
     f_score, f_reasons = _score_etf_flows(etf_flows)
     score += f_score
     reasons.extend(f_reasons)
 
-    # オプション
+    # Options
     o_score, o_reasons = _score_options(options_data)
     score += o_score
     reasons.extend(o_reasons)
 
-    # 直近経済指標
+    # Macro
     for e in recent_events or []:
         macro_score, macro_reason = _score_macro_event(e)
         if macro_score != 0:
             score += macro_score
             reasons.append(macro_reason)
 
-    # 今日のイベント待ち
     for e in upcoming_events or []:
         if e.get("event_status") == "予定" and e.get("importance_label") == "高":
             score -= 0.5
