@@ -6,7 +6,7 @@ from config.settings import (
 
 # data
 from data.market_data import download_ohlc
-from data.economic_calendar import fetch_yahoo_economic_events, split_events_for_mail
+from data.economic_calendar import fetch_minkabu_economic_events, split_events_for_mail
 
 # logic
 from logic.market_calc import build_rows, summarize_sector_attention
@@ -56,28 +56,27 @@ def run():
         sector_attention = summarize_sector_attention(sector_rows)
 
         # =========================================
-        # ③ 経済指標取得（Yahoo Finance）
+        # ③ 経済指標取得（みんかぶ）
         # =========================================
-        print("[INFO] fetching economic events from Yahoo Finance...")
-        events = fetch_yahoo_economic_events(limit=100)
+        print("[INFO] fetching economic events from MINKABU...")
+        events = fetch_minkabu_economic_events()
 
-        # ===== DEBUG START =====
         print(f"[DEBUG] events_total = {len(events)}")
 
         for i, e in enumerate(events[:5], start=1):
             print(f"[DEBUG] EVENT SAMPLE {i}: {e}")
-        # ===== DEBUG END =====
 
+        # =========================================
+        # ④ メール用分割
+        # =========================================
         macro_payload = split_events_for_mail(events, now)
 
-        # ===== DEBUG START =====
         print(f"[DEBUG] macro_payload_mode = {macro_payload['mode']}")
         print(f"[DEBUG] yesterday_events = {len(macro_payload['yesterday_events'])}")
         print(f"[DEBUG] today_events = {len(macro_payload['today_events'])}")
         print(f"[DEBUG] weekly_upcoming = {len(macro_payload['weekly_upcoming'])}")
-        # ===== DEBUG END =====
 
-        # AI・score に渡す用
+        # AI・スコア用
         if macro_payload["mode"] == "monday":
             print("[INFO] monday mode detected")
             recent_events = []
@@ -90,7 +89,7 @@ def run():
         print(f"[INFO] recent_events = {len(recent_events)}")
         print(f"[INFO] upcoming_events = {len(upcoming_events)}")
 
-        # 必要ならここでもサンプル確認
+        # サンプル確認
         for i, e in enumerate(recent_events[:3], start=1):
             print(f"[DEBUG] RECENT EVENT {i}: {e}")
 
@@ -98,7 +97,7 @@ def run():
             print(f"[DEBUG] UPCOMING EVENT {i}: {e}")
 
         # =========================================
-        # ④ スコア計算
+        # ⑤ スコア計算
         # =========================================
         print("[INFO] scoring market...")
         score, reasons = score_market(
@@ -114,7 +113,7 @@ def run():
         print(f"[INFO] regime = {regime}")
 
         # =========================================
-        # ⑤ シグナル生成
+        # ⑥ シグナル生成
         # =========================================
         print("[INFO] generating trend signal...")
         signal, signal_details = generate_trend_signal(
@@ -129,7 +128,7 @@ def run():
         print(f"[INFO] signal_details = {signal_details}")
 
         # =========================================
-        # ⑥ AI概況生成
+        # ⑦ AI概況生成
         # =========================================
         print("[INFO] generating ai summary...")
         ai_summary = generate_ai_summary(
@@ -145,7 +144,7 @@ def run():
         )
 
         # =========================================
-        # ⑦ HTML生成
+        # ⑧ HTML生成
         # =========================================
         print("[INFO] building html...")
         html = build_html(
@@ -168,13 +167,13 @@ def run():
         print(f"[INFO] HTML saved to {LATEST_HTML_FILE}")
 
         # =========================================
-        # ⑧ メール送信
+        # ⑨ メール送信
         # =========================================
         print("[INFO] sending email...")
         send_mail("マーケットレポート", html)
 
         # =========================================
-        # ⑨ ログ保存
+        # ⑩ ログ保存
         # =========================================
         print("[INFO] saving csv logs...")
         save_daily_log(score, regime, signal)
