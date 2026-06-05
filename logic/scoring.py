@@ -123,4 +123,3 @@ def classify_regime(score):
         return "ややリスクオフ"
     else:
         return "強めのリスクオフ"
-``
