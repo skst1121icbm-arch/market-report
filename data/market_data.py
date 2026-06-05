@@ -25,3 +25,4 @@ def get_close_pair(df, symbol):
 
     except Exception:
         return None, None
+``
