@@ -39,8 +39,6 @@ upcoming_lines = [
     str(e.get("event_name") or "")
     for e in upcoming_events or []
 ]
-    
-    upcoming_lines = [e.get("event_name", "") for e in upcoming_events or []]
 
     prompt = f"""
 あなたは日本語で金融市場サマリーを書くアナリストです。
