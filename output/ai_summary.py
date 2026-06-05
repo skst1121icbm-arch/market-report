@@ -29,7 +29,17 @@ def generate_ai_summary(
         for r in sector_rows
     ]
 
-    recent_lines = [e.get("event_name", "") for e in recent_events or []]
+    
+recent_lines = [
+    str(e.get("event_name") or "")
+    for e in recent_events or []
+]
+
+upcoming_lines = [
+    str(e.get("event_name") or "")
+    for e in upcoming_events or []
+]
+    
     upcoming_lines = [e.get("event_name", "") for e in upcoming_events or []]
 
     prompt = f"""
