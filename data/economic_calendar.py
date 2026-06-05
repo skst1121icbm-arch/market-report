@@ -6,11 +6,6 @@ from config.settings import JST
 
 
 def _normalize_colname(name):
-    """
-    列名を正規化:
-    - 小文字化
-    - 空白/ハイフン/スラッシュ/括弧を除去
-    """
     if name is None:
         return ""
     s = str(name).strip().lower()
@@ -20,9 +15,6 @@ def _normalize_colname(name):
 
 
 def _build_normalized_row_map(row):
-    """
-    row(Series) -> 正規化列名 => 値 の dict
-    """
     out = {}
     for k, v in row.items():
         out[_normalize_colname(k)] = v
@@ -30,9 +22,6 @@ def _build_normalized_row_map(row):
 
 
 def _pick_value_norm(norm_row, candidates, default=None):
-    """
-    正規化後の列名 dict から候補を探す
-    """
     for c in candidates:
         key = _normalize_colname(c)
         if key in norm_row:
@@ -47,10 +36,8 @@ def _to_jst_datetime(v):
         return None
 
     try:
-        # まず UTC 前提で解釈
         dt = pd.to_datetime(v, utc=True, errors="coerce")
         if pd.isna(dt):
-            # だめなら普通に解釈
             dt = pd.to_datetime(v, errors="coerce")
             if pd.isna(dt):
                 return None
@@ -70,7 +57,6 @@ def _importance_to_label(v):
 
     s = str(v).strip().lower()
 
-    # よくあるパターンに広く対応
     if "high" in s or s in ["3", "3.0", "強", "高"]:
         return "高"
     if "low" in s or s in ["1", "1.0", "弱", "低"]:
@@ -90,14 +76,9 @@ def _sanitize(v):
 
 def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=200):
     """
-    Yahoo Finance / yfinance の economic events calendar を取得し、
-    できるだけ頑健に標準化して返す。
-
-    重要:
-    - まずは country フィルタをかけない
-    - 列名の揺れに耐える
-    - 生データ構造をログに出す
+    Yahoo Finance / yfinance の economic events calendar を取得して標準化する
     """
+
     if start_date is None:
         start_date = datetime.now(JST).date()
 
@@ -125,7 +106,6 @@ def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=200):
     print(f"[DEBUG] RAW rows = {len(df)}")
     print(f"[DEBUG] RAW columns = {list(df.columns)}")
 
-    # 最初の数行をそのまま確認
     try:
         print("[DEBUG] RAW head(3):")
         print(df.head(3).to_dict(orient="records"))
@@ -134,13 +114,14 @@ def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=200):
 
     events = []
 
-    for idx, row in df.iterrows():
+    # ✅ enumerate を使うように修正
+    for i, (idx, row) in enumerate(df.iterrows()):
         norm_row = _build_normalized_row_map(row)
 
-        # どんなキーがあるか最初だけ見る
-        if idx < 3:
-            print(f"[DEBUG] normalized keys row {idx}: {list(norm_row.keys())}")
+        if i < 3:
+            print(f"[DEBUG] normalized keys row {i}: {list(norm_row.keys())}")
 
+        # 今回の Yahoo 実データ列に対応
         event_dt_raw = _pick_value_norm(
             norm_row,
             [
@@ -153,6 +134,7 @@ def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=200):
                 "time",
                 "releaseDate",
                 "datetime",
+                "Event Time",
             ],
         )
 
@@ -165,9 +147,12 @@ def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=200):
                 "locale",
                 "currency",
                 "nation",
+                "Region",
             ]
         )
 
+        # 今回は event 名そのものの列が見えていないので、
+        # 一旦 "For" を event_name に代用して流れを確認する
         event_name_raw = _pick_value_norm(
             norm_row,
             [
@@ -178,6 +163,7 @@ def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=200):
                 "indicator",
                 "indicatorName",
                 "report",
+                "For",
             ],
             "",
         )
@@ -190,6 +176,7 @@ def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=200):
                 "expected",
                 "survey",
                 "medianforecast",
+                "Expected",
             ]
         )
 
@@ -200,6 +187,7 @@ def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=200):
                 "actualValue",
                 "released",
                 "result",
+                "Actual",
             ]
         )
 
@@ -210,6 +198,8 @@ def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=200):
                 "prior",
                 "previousValue",
                 "last",
+                "Last",
+                "Revised",
             ]
         )
 
@@ -251,11 +241,9 @@ def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=200):
 
     print(f"[DEBUG] normalized events = {len(events)}")
 
-    # 正規化後のサンプル
     for i, e in enumerate(events[:5], start=1):
         print(f"[DEBUG] NORMALIZED EVENT SAMPLE {i}: {e}")
 
-    # event_dt_jst がないものは後ろへ
     events = sorted(
         events,
         key=lambda x: x["event_dt_jst"] or datetime.max.replace(tzinfo=JST),
@@ -265,14 +253,6 @@ def fetch_yahoo_economic_events(start_date=None, end_date=None, limit=200):
 
 
 def split_events_for_mail(events, now_jst):
-    """
-    月曜:
-      - 今週の予定
-    それ以外:
-      - 昨日の結果
-      - 今日の予定/結果
-    JST基準
-    """
     today = now_jst.date()
     yesterday = today - timedelta(days=1)
 
