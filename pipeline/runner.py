@@ -112,4 +112,3 @@ def run():
         "regime": regime,
         "signal": signal,
     }
-``
