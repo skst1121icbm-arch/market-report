@@ -30,17 +30,17 @@ def generate_ai_summary(
     ]
 
     
-recent_lines = [
+    recent_lines = [
     str(e.get("event_name") or "")
     for e in recent_events or []
 ]
 
-upcoming_lines = [
+    upcoming_lines = [
     str(e.get("event_name") or "")
     for e in upcoming_events or []
 ]
 
-prompt = f"""
+    prompt = f"""
 あなたは日本語で金融市場サマリーを書くアナリストです。
 以下のデータをもとに自然な日本語で概況を書いてください。
 
