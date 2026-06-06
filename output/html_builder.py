@@ -1,9 +1,6 @@
 from utils.datetime_utils import now_jst
 
 
-# ============================
-# フォーマット
-# ============================
 def nl2br(text):
     if not text:
         return ""
@@ -13,14 +10,14 @@ def nl2br(text):
 def _fmt_num(v):
     try:
         return f"{float(v):.2f}"
-    except:
+    except Exception:
         return "N/A"
 
 
 def _fmt_pct(v):
     try:
         return f"{float(v):.1f}%"
-    except:
+    except Exception:
         return "N/A"
 
 
@@ -38,9 +35,6 @@ def _val(label, rows):
     return _fmt_num(r.get("value")), r.get("change_text", "N/A")
 
 
-# ============================
-# HTML生成（最終版）
-# ============================
 def build_html(
     market_rows,
     sector_rows,
@@ -59,41 +53,40 @@ def build_html(
 
     today = now_jst().strftime("%Y-%m-%d")
 
-    # ========= 市場 =========
+    # 市場
     sp_v, sp_c = _val("S&P500", market_rows)
     nd_v, nd_c = _val("NASDAQ", market_rows)
     dow_v, dow_c = _val("NYダウ", market_rows)
     rut_v, rut_c = _val("Russell2000", market_rows)
     nik_v, nik_c = _val("日経平均", market_rows)
 
-    # ========= ボラ =========
+    # ボラ
     vix_v, vix_c = _val("VIX", market_rows)
 
-    # ========= 金利 =========
+    # 金利
     y10_v, y10_c = _val("米10年金利", market_rows)
     y2_v = _fmt_num(rate_extras.get("米2年債利回り"))
 
-    # ========= 為替 =========
+    # 為替
     dxy_v, dxy_c = _val("DXY", market_rows)
     uj_v, uj_c = _val("USD/JPY", market_rows)
     eu_v, eu_c = _val("EUR/USD", market_rows)
 
-    # ========= コモディティ =========
+    # コモディティ
     oil_v, oil_c = _val("WTI原油", market_rows)
     gold_v, gold_c = _val("ゴールド", market_rows)
     cop_v, cop_c = _val("銅", market_rows)
 
-    # ========= Breadth =========
+    # Market Breadth
     ratio_txt = _fmt_pct(breadth.get("ratio"))
     state = breadth.get("state")
 
-    # ========= セクター分析 =========
+    # セクター別分析
     sector_html = "<br>".join(
         f"{r['label']} {r['change_text']}"
         for r in sector_rows
     )
 
-    # ========= HTML =========
     html = f"""
     <html>
     <body style="font-family:Arial; line-height:1.7;">
@@ -101,7 +94,7 @@ def build_html(
     <h2>📊 Daily Market Checklist ({today})</h2>
 
     <h3>① マーケット</h3>
-    S&P500 {sp_v} ({sp_c})<br>
+    S&amp;P500 {sp_v} ({sp_c})<br>
     NASDAQ {nd_v} ({nd_c})<br>
     Dow {dow_v} ({dow_c})<br>
     Russell {rut_v} ({rut_c})<br>
