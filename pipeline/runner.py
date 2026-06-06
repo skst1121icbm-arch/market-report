@@ -22,7 +22,6 @@ from utils.datetime_utils import now_jst
 
 
 def run():
-
     print("===== START MARKET AI =====")
 
     now = now_jst()
@@ -33,11 +32,27 @@ def run():
     market_df = download_ohlc(list(MARKET_SYMBOLS.values()))
     sector_df = download_ohlc(list(SECTOR_ETFS.values()))
 
+    print("[DEBUG] market_df is None =", market_df is None)
+    if market_df is not None:
+        print("[DEBUG] df columns =", market_df.columns)   # ← 依頼どおり追加
+        print("[DEBUG] market_df head =")
+        print(market_df.head())
+    else:
+        print("[DEBUG] market_df is None → yfinance失敗")
+
+    print("[DEBUG] sector_df is None =", sector_df is None)
+    if sector_df is not None:
+        print("[DEBUG] sector_df columns =", sector_df.columns)
+        print("[DEBUG] sector_df head =")
+        print(sector_df.head())
+    else:
+        print("[DEBUG] sector_df is None → yfinance失敗")
+
     market_rows = build_rows(market_df, MARKET_SYMBOLS)
     sector_rows = build_rows(sector_df, SECTOR_ETFS)
 
-    print("[DEBUG] market_rows =", market_rows[:3])
-    print("[DEBUG] sector_rows =", sector_rows[:3])
+    print("[DEBUG] market_rows =", market_rows[:5])
+    print("[DEBUG] sector_rows =", sector_rows[:5])
 
     sector_attention = summarize_sector_attention(sector_rows)
 
@@ -50,10 +65,14 @@ def run():
     recent_events = macro_payload["yesterday_events"]
     upcoming_events = macro_payload["today_events"]
 
+    print("[DEBUG] recent_events =", recent_events)
+    print("[DEBUG] upcoming_events =", upcoming_events)
+
     # =========================
-    # ③ 金利
+    # ③ 金利（FRED）
     # =========================
     rate_extras = fetch_us_rate_extras()
+    print("[DEBUG] rate_extras =", rate_extras)
 
     # =========================
     # ④ 内部データ
@@ -63,8 +82,8 @@ def run():
     options_data = fetch_options_data(market_rows)
 
     print("[DEBUG] breadth =", breadth)
-    print("[DEBUG] etf =", etf_flows)
-    print("[DEBUG] options =", options_data)
+    print("[DEBUG] etf_flows =", etf_flows)
+    print("[DEBUG] options_data =", options_data)
 
     # =========================
     # ⑤ スコア
@@ -81,6 +100,9 @@ def run():
 
     regime = classify_regime(score)
 
+    print("[DEBUG] score =", score)
+    print("[DEBUG] reasons =", reasons)
+
     # =========================
     # ⑥ シグナル
     # =========================
@@ -92,10 +114,14 @@ def run():
         upcoming_events,
     )
 
+    print("[DEBUG] signal =", signal)
+    print("[DEBUG] signal_details =", signal_details)
+
     # =========================
     # ⑦ テーマ
     # =========================
     themes = detect_market_themes(sector_rows, market_rows, reasons)
+    print("[DEBUG] themes =", themes)
 
     # =========================
     # ⑧ AI
@@ -115,6 +141,8 @@ def run():
         options_data=options_data,
         themes=themes,
     )
+
+    print("[DEBUG] ai_summary =", ai_summary[:300] if isinstance(ai_summary, str) else ai_summary)
 
     # =========================
     # ⑨ HTML
@@ -139,6 +167,8 @@ def run():
     with open(LATEST_HTML_FILE, "w", encoding="utf-8") as f:
         f.write(html)
 
+    print("[DEBUG] HTML saved =", LATEST_HTML_FILE)
+
     # =========================
     # ⑩ メール
     # =========================
@@ -148,5 +178,8 @@ def run():
 
     return {
         "score": score,
-        "regime": regime
+        "regime": regime,
+        "breadth": breadth,
+        "etf_flows": etf_flows,
+        "options_data": options_data,
     }
