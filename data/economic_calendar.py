@@ -5,10 +5,6 @@ from config.settings import JST
 
 
 def fetch_minkabu_economic_events():
-    """
-    現状は安定動作優先で fallback を返す。
-    将来的に実ソースへ差し替える前提。
-    """
     now = datetime.now(JST)
     today = now.date()
     yesterday = today - timedelta(days=1)
