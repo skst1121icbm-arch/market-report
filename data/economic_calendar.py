@@ -1,4 +1,5 @@
-from datetime import datetime, timedeltafrom requests
+from datetime import datetime, timedelta
+import requests
 
 JST = ZoneInfo("Asia/Tokyo")
 
