@@ -1,8 +1,9 @@
 import os
-ences(text: str):import re
-    """
-    日本語の句点でざっくり文分割
-    """
+import re
+from openai import OpenAI
+
+
+def _split_sentences(text: str):
     if not text:
         return []
 
@@ -10,68 +11,37 @@ ences(text: str):import re
     return [p.strip() for p in parts if p.strip()]
 
 
-def _is_important_sentence(sentence: str) -> bool:
-    """
-    重要文判定
-    """
+def _is_important(sentence: str):
     keywords = [
-        "強気", "弱気", "リスクオン", "リスクオフ",
-        "上昇", "下落", "資金流入", "資金流出",
-        "VIX", "Put/Call", "Breadth",
-        "全面安", "全面上昇", "警戒", "追い風", "逆風"
+        "強気", "弱気", "下落", "上昇",
+        "リスクオフ", "リスクオン",
+        "資金流出", "資金流入",
+        "VIX"
     ]
     return any(k in sentence for k in keywords)
 
 
-def _make_one_line_summary(sentences):
-    """
-    最初の要約1行を作る
-    """
-    if not sentences:
-        return "要約: 概況を生成できませんでした。"
+def _format_text(text: str):
+    if not text:
+        return "要約: 生成失敗"
 
+    sentences = _split_sentences(text)
+
+    if not sentences:
+        return f"要約: {text}"
+
+    # ✅ 要約1行
     first = sentences[0]
-    # 長すぎるときの軽い調整
-    if len(first) > 70:
-        first = first[:70].rstrip("、，, ") + "…"
+    summary = f"要約: {first}"
 
-    return f"要約: {first}"
+    out = [summary, ""]
 
-
-def _format_ai_text(raw_text: str) -> str:
-    """
-    1) 最初に要約1行を追加
-    2) 重要文だけ太字
-    3) 読みやすいように改行
-    """
-    if not raw_text:
-        return "要約: 概況を生成できませんでした。"
-
-    sentences = _split_sentences(raw_text)
-    if not sentences:
-        return f"要約: {raw_text}"
-
-    summary_line = _make_one_line_summary(sentences)
-
-    formatted = [summary_line, ""]
-
-    paragraph = []
     for s in sentences:
-        if _is_important_sentence(s):
+        if _is_important(s):
             s = f"<b>{s}</b>"
+        out.append(s)
 
-        paragraph.append(s)
-
-        # 2文ごとに段落を切る
-        if len(paragraph) >= 2:
-            formatted.append("".join(paragraph))
-            formatted.append("")
-            paragraph = []
-
-    if paragraph:
-        formatted.append("".join(paragraph))
-
-    return "\n".join(formatted).strip()
+    return "\n".join(out)
 
 
 def generate_ai_summary(
@@ -92,45 +62,27 @@ def generate_ai_summary(
     api_key = os.getenv("OPENAI_API_KEY")
 
     if not api_key:
-        return "要約: AI要約未設定"
+        return "要約: AI未設定"
 
     client = OpenAI(api_key=api_key)
 
-    # 市場データ
     market_lines = [
-        f"{r['label']} {r.get('change_text', 'N/A')}"
+        f"{r['label']} {r.get('change_text','N/A')}"
         for r in market_rows
     ]
 
-    # セクター
     sector_lines = [
-        f"{r['label']} {r.get('change_text', 'N/A')}"
+        f"{r['label']} {r.get('change_text','N/A')}"
         for r in sector_rows
     ]
 
-    # 経済指標（簡易）
-    recent_lines = []
-    for e in recent_events or []:
-        recent_lines.append(
-            f"{e.get('event_name')} 結果={e.get('actual')} 予想={e.get('forecast')}"
-        )
-
-    upcoming_lines = []
-    for e in upcoming_events or []:
-        upcoming_lines.append(
-            f"{e.get('event_name')} 予想={e.get('forecast')}"
-        )
-
     prompt = f"""
-以下のデータをもとに市場概況を日本語で簡潔に説明してください。
+市場データをもとに日本語で簡潔に説明してください。
 
 【条件】
-・箇条書き禁止
-・250〜500文字
-・最初の1文で全体感がわかるように書く
-・スコアやレジームという言葉は出さない
-・テーマという見出しは使わない
-・Breadth、ETF、Options の意味をやさしく反映する
+・250〜400文字
+・最初の一文で全体像
+・スコアという単語は使わない
 
 【市場】
 {chr(10).join(market_lines)}
@@ -138,13 +90,7 @@ def generate_ai_summary(
 【セクター】
 {chr(10).join(sector_lines)}
 
-【直近経済指標】
-{chr(10).join(recent_lines) if recent_lines else "なし"}
-
-【今後の経済指標】
-{chr(10).join(upcoming_lines) if upcoming_lines else "なし"}
-
-【Market Breadth】
+【Breadth】
 {breadth}
 
 【ETF】
@@ -152,12 +98,6 @@ def generate_ai_summary(
 
 【Options】
 {options_data}
-
-【シグナル】
-{signal}
-
-【補足理由】
-{" / ".join(reasons) if reasons else "なし"}
 """
 
     try:
@@ -166,12 +106,9 @@ def generate_ai_summary(
             messages=[{"role": "user", "content": prompt}],
         )
 
-        raw_text = res.choices[0].message.content
-        return _format_ai_text(raw_text)
+        raw = res.choices[0].message.content
+
+        return _format_text(raw)
 
     except Exception as e:
-        return f"要約: AIエラー\n\n{e}"
-
-from openai import OpenAI
-
-
+        return f"要約: AIエラー\n{e}"
