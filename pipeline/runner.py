@@ -4,7 +4,7 @@ from data.market_data import download_ohlc
 from data.economic_calendar import fetch_minkabu_economic_events, split_events_for_mail
 from data.fred_api import fetch_us_rate_extras
 from data.market_internals import (
-    fetch_market_breadth,
+    fetch_market_breadth,print("[DEBUG] rate_extras =", rate_extras)
     fetch_etf_flows,
     fetch_options_data,
 )
@@ -61,8 +61,13 @@ def run():
     # ④ 金利（FRED）
     # =========================
     rate_extras = fetch_us_rate_extras()
-    print("[DEBUG] rate_extras =", rate_extras)
-
+    
+    print("===== rate_extras DEBUG =====")
+    print(rate_extras)
+    print("実質金利:", rate_extras.get("実質金利"))
+    print("利下げ折込回数:", rate_extras.get("利下げ折込回数"))
+    print("============================")
+    
     # =========================
     # ⑤ 内部データ
     # =========================
