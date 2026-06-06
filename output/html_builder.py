@@ -361,12 +361,14 @@ def build_html(
         y2_change_text = "N/A"
 
     # ✅ NEW：実質金利
-    real_rate_raw = rate_extras.get("実質金利")
+    real_rate_raw = rate_extras.get("実質金利(10Y)")
+    real_rate_prev = rate_extras.get("実質金利(10Y)_前回")
+    
     real_rate = _safe(real_rate_raw)
     
-    real_rate_change_raw = rate_extras.get("実質金利_前日比")
     try:
-        real_rate_change_text = f"{real_rate_change_raw:+.2f}%"
+        change = float(real_rate_raw) - float(real_rate_prev)
+        real_rate_change_text = f"{change:+.2f}%"
     except Exception:
         real_rate_change_text = "N/A"
 
