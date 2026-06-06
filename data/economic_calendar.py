@@ -1,33 +1,13 @@
-from datetime import datetime, timedelta
-import requests
-
-JST = ZoneInfo("Asia/Tokyo")
-
-
-def fetch_investing_economic_events():
-    url = "https://www.investing.com/economic-calendar/Service/getCalendarFilteredData"
-
-    payload = {
-        "country[]": ["5", "35"],  # 5=US, 35=JP
-        "importance[]": ["1", "2", "3"],
-        "timeZone": "9",
-        "timeFilter": "timeRemain",
-        "currentTab": "custom",
+from datetime import datetime, timedeltafrom datetime import datetime-Type": "application/x-www-form-urlencoded",
     }
 
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "X-Requested-With": "XMLHttpRequest",
-        "Content-Type": "application/x-www-form-urlencoded",
-    }
-
-    res = requests.post(url, headers=headers, data=payload)
+    res = requests.post(url, headers=headers, data=payload, timeout=30)
     res.raise_for_status()
 
     data = res.json()
-
     html = data.get("data", "")
 
+    # ↓ importはここで分離（絶対壊れない）
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(html, "html.parser")
 
@@ -38,18 +18,20 @@ def fetch_investing_economic_events():
 
     for r in rows:
         cols = r.find_all("td")
-        if len(cols) < 6:
+
+        # 必須列数チェック
+        if len(cols) < 7:
             continue
 
         try:
-            time = cols[0].text.strip()
-            currency = cols[1].text.strip()
-            event_name = cols[3].text.strip()
-            actual = cols[4].text.strip()
-            forecast = cols[5].text.strip()
-            previous = cols[6].text.strip()
+            time = cols[0].get_text(strip=True)
+            currency = cols[1].get_text(strip=True)
+            event_name = cols[3].get_text(strip=True)
+            actual = cols[4].get_text(strip=True)
+            forecast = cols[5].get_text(strip=True)
+            previous = cols[6].get_text(strip=True)
 
-            item = {
+            events.append({
                 "event_date_jst": today,
                 "event_time_jst": time,
                 "country": currency,
@@ -58,10 +40,8 @@ def fetch_investing_economic_events():
                 "actual": actual,
                 "previous": previous,
                 "importance_label": "",
-                "event_status": "結果" if actual else "予定",
-            }
-
-            events.append(item)
+                "event_status": "結果" if actual not in ["", "-", "N/A"] else "予定",
+            })
 
         except Exception:
             continue
@@ -69,16 +49,37 @@ def fetch_investing_economic_events():
     return events
 
 
-def fetch_minkabu_economic_events():
-    return fetch_investing_economic_events()
-
-
 def split_events_for_mail(events, now_jst):
-    today = now_jst.date()
-    yesterday = today - timedelta(days=1)
-
+    """
+    ✅ 今回はAPIが当日中心なので
+    今日のみ返す
+    """
     return {
-        "yesterday_events": [],  # APIは当日中心
-        "today_events": events
+        "yesterday_events": [],
+        "today_events": events,
     }
+
 from zoneinfo import ZoneInfo
+import requests
+
+JST = ZoneInfo("Asia/Tokyo")
+
+
+def fetch_minkabu_economic_events():
+    """
+    ✅ Investing API版（403回避）
+    ✅ 崩れ防止構成
+    """
+    url = "https://www.investing.com/economic-calendar/Service/getCalendarFilteredData"
+
+    payload = {
+        "country[]": ["5", "35"],   # 5=US, 35=JP
+        "importance[]": ["1", "2", "3"],
+        "timeZone": "9",
+        "timeFilter": "timeRemain",
+        "currentTab": "custom",
+    }
+
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "X-Requested-With": "XMLHttpRequest",
