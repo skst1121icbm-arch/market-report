@@ -81,31 +81,70 @@ def _warn(text):
 # =========================
 def _clean_summary_text(text: str) -> str:
     """
-    既存の ** / ** を除去し、
-    先頭の「要約: ...」行だけ太字にする
+    フォーマット維持 + 主因・市場・結論の分離
     """
+
     if not text:
-        return "N/A"
+        return (
+            "<strong>主因:</strong> N/A<br>"
+            "<strong>市場の反応:</strong> N/A<br>"
+            "<strong>結論:</strong> N/A"
+        )
 
     s = str(text)
-    s = re.sub(r"<[^>]+>", "", s, flags=re.IGNORECASE)
+
+    # HTML削除
+    s = re.sub(r"<[^>]+>", "", s)
     s = s.replace("**", "")
+    s = s.strip()
 
-    lines = s.split("\n")
-    blocks = []
+    lines = [line.strip() for line in s.splitlines() if line.strip()]
 
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if not line:
-            continue
+    main = None
+    reaction = None
+    conclusion = None
 
-        esc = escape(line)
-        if i == 0 and line.startswith("要約:"):
-            blocks.append(f"<strong>{esc}</strong><br>")
-        else:
-            blocks.append(f"{esc}<br>")
+    # ✅ ラベル優先
+    for line in lines:
+        if line.startswith("主因") and not main:
+            main = line.split(":", 1)[-1].strip()
+        elif line.startswith("市場の反応") and not reaction:
+            reaction = line.split(":", 1)[-1].strip()
+        elif line.startswith("結論") and not conclusion:
+            conclusion = line.split(":", 1)[-1].strip()
 
-    return "".join(blocks) if blocks else "N/A"
+    # ✅ fallback（AI崩れ対策）
+    fallback = [l for l in lines if not l.startswith(("主因", "市場の反応", "結論"))]
+
+    i = 0
+    if not main:
+        main = fallback[i] if i < len(fallback) else "N/A"
+        i += 1
+    if not reaction:
+        reaction = fallback[i] if i < len(fallback) else "N/A"
+        i += 1
+    if not conclusion:
+        conclusion = fallback[i] if i < len(fallback) else "N/A"
+
+    # ✅ 重複防止（重要）
+    if main == reaction:
+        reaction = "市場は方向感を探る展開"
+    if reaction == conclusion:
+        conclusion = "方向感に乏しい相場"
+
+    # ✅ 結論カラー
+    if "リスクオフ" in conclusion:
+        conclusion_html = f'<span style="color:#dc2626; font-weight:700;">{escape(conclusion)}</span>'
+    elif "リスクオン" in conclusion:
+        conclusion_html = f'<span style="color:#16a34a; font-weight:700;">{escape(conclusion)}</span>'
+    else:
+        conclusion_html = escape(conclusion)
+
+    return (
+        f"<strong>主因:</strong> {escape(main)}<br>"
+        f"<strong>市場の反応:</strong> {escape(reaction)}<br>"
+        f"<strong>結論:</strong> {conclusion_html}"
+    )
 
 
 # =========================
