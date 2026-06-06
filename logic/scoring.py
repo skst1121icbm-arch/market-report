@@ -1,8 +1,5 @@
 import re
-from logic.market_calc import summarize_sector_attention
-
-
-def _parse_numeric(value):
+from logic.marketparse_numeric(value):from logic.market_calc import summarize_sector_attention
     if value is None:
         return None
 
@@ -95,12 +92,7 @@ def _score_macro_event(event: dict):
 
     surprise = actual - forecast
 
-    if importance == "高":
-        base = 2
-    elif importance == "中":
-        base = 1
-    else:
-        base = 0.5
+    base = 2 if importance == "高" else 1 if importance == "中" else 0.5
 
     if direction == +1:
         score = base if surprise > 0 else -base if surprise < 0 else 0
@@ -108,13 +100,7 @@ def _score_macro_event(event: dict):
         score = base if surprise < 0 else -base if surprise > 0 else 0
 
     relation = "上振れ" if surprise > 0 else "下振れ" if surprise < 0 else "予想通り"
-
-    if score > 0:
-        tone = "リスクオン寄与"
-    elif score < 0:
-        tone = "リスクオフ寄与"
-    else:
-        tone = "中立"
+    tone = "リスクオン寄与" if score > 0 else "リスクオフ寄与" if score < 0 else "中立"
 
     reason = f"{event_name}が{relation}（結果={event.get('actual')} / 予想={event.get('forecast')}）→ {tone}"
     return score, reason
@@ -127,29 +113,15 @@ def _score_breadth(breadth: dict):
     if not breadth:
         return score, reasons
 
+    ratio = breadth.get("ratio")
     adv = breadth.get("adv")
     dec = breadth.get("dec")
-    ratio = breadth.get("ratio")
-    new_high = breadth.get("new_high")
-    new_low = breadth.get("new_low")
     state = breadth.get("state")
-
-    try:
-        adv_num = float(adv)
-        dec_num = float(dec)
-    except Exception:
-        adv_num = dec_num = None
 
     try:
         ratio_num = float(ratio)
     except Exception:
         ratio_num = None
-
-    try:
-        nh = float(new_high)
-        nl = float(new_low)
-    except Exception:
-        nh = nl = None
 
     if ratio_num is not None:
         if ratio_num >= 60:
@@ -159,21 +131,16 @@ def _score_breadth(breadth: dict):
             score -= 1
             reasons.append(f"上昇銘柄比率が低い（{ratio_num:.2f}%）")
 
-    if adv_num is not None and dec_num is not None:
-        if adv_num > dec_num:
-            score += 0.5
-            reasons.append(f"Adv/Dec良好（{int(adv_num)}/{int(dec_num)}）")
-        elif adv_num < dec_num:
-            score -= 0.5
-            reasons.append(f"Adv/Dec悪化（{int(adv_num)}/{int(dec_num)}）")
-
-    if nh is not None and nl is not None:
-        if nh > nl:
-            score += 0.5
-            reasons.append(f"新高値優勢（{int(nh)}/{int(nl)}）")
-        elif nh < nl:
-            score -= 0.5
-            reasons.append(f"新安値優勢（{int(nh)}/{int(nl)}）")
+    if adv is not None and dec is not None:
+        try:
+            if float(adv) > float(dec):
+                score += 0.5
+                reasons.append(f"Adv/Dec良好（{adv}/{dec}）")
+            elif float(adv) < float(dec):
+                score -= 0.5
+                reasons.append(f"Adv/Dec悪化（{adv}/{dec}）")
+        except Exception:
+            pass
 
     if state:
         reasons.append(f"市場内部: {state}")
@@ -188,33 +155,17 @@ def _score_etf_flows(etf_flows: dict):
     if not etf_flows:
         return score, reasons
 
-    spy = _parse_numeric(etf_flows.get("SPY"))
-    qqq = _parse_numeric(etf_flows.get("QQQ"))
-    iwm = _parse_numeric(etf_flows.get("IWM"))
+    for name in ["SPY", "QQQ", "IWM"]:
+        val = _parse_numeric(etf_flows.get(name))
+        if val is None:
+            continue
 
-    if spy is not None:
-        if spy > 0:
+        if val > 0:
             score += 0.5
-            reasons.append(f"SPYフロー流入（{etf_flows.get('SPY')}）")
-        elif spy < 0:
+            reasons.append(f"{name}フロー流入（{etf_flows.get(name)}）")
+        elif val < 0:
             score -= 0.5
-            reasons.append(f"SPYフロー流出（{etf_flows.get('SPY')}）")
-
-    if qqq is not None:
-        if qqq > 0:
-            score += 0.5
-            reasons.append(f"QQQフロー流入（{etf_flows.get('QQQ')}）")
-        elif qqq < 0:
-            score -= 0.5
-            reasons.append(f"QQQフロー流出（{etf_flows.get('QQQ')}）")
-
-    if iwm is not None:
-        if iwm > 0:
-            score += 0.5
-            reasons.append(f"IWMフロー流入（{etf_flows.get('IWM')}）")
-        elif iwm < 0:
-            score -= 0.5
-            reasons.append(f"IWMフロー流出（{etf_flows.get('IWM')}）")
+            reasons.append(f"{name}フロー流出（{etf_flows.get(name)}）")
 
     if etf_flows.get("interpretation"):
         reasons.append(f"ETFフロー解釈: {etf_flows.get('interpretation')}")
@@ -230,32 +181,26 @@ def _score_options(options_data: dict):
         return score, reasons
 
     put_call = options_data.get("put_call")
-    sentiment = options_data.get("sentiment")
     notable = options_data.get("notable")
+    sentiment = options_data.get("sentiment")
 
     try:
-        put_call_num = float(put_call)
+        p = float(put_call)
     except Exception:
-        put_call_num = None
+        p = None
 
-    if put_call_num is not None:
-        if put_call_num < 0.8:
+    if p is not None:
+        if p < 0.8:
             score += 1
-            reasons.append(f"Put/Call低水準（{put_call_num:.2f}）→ 強気")
-        elif put_call_num > 1.1:
+            reasons.append(f"Put/Call低水準（{p:.2f}）→ 強気")
+        elif p > 1.1:
             score -= 1
-            reasons.append(f"Put/Call高水準（{put_call_num:.2f}）→ 弱気")
+            reasons.append(f"Put/Call高水準（{p:.2f}）→ 弱気")
         else:
-            reasons.append(f"Put/Call中立（{put_call_num:.2f}）")
+            reasons.append(f"Put/Call中立（{p:.2f}）")
 
     if notable:
-        text = str(notable)
-        if "コール" in text:
-            score += 0.5
-            reasons.append(f"オプション大口: {notable}")
-        elif "プット" in text:
-            score -= 0.5
-            reasons.append(f"オプション大口: {notable}")
+        reasons.append(f"オプション大口: {notable}")
 
     if sentiment:
         reasons.append(f"オプションセンチメント: {sentiment}")
@@ -289,21 +234,11 @@ def score_market(
     dow = ch("NYダウ")
     nikkei = ch("日経平均")
 
-    if spx is not None:
-        score += 1 if spx > 0 else -1 if spx < 0 else 0
-        reasons.append(f"S&P500 {'上昇' if spx > 0 else '下落' if spx < 0 else '横ばい'}（{spx:.2f}%）")
-
-    if ndq is not None:
-        score += 1 if ndq > 0 else -1 if ndq < 0 else 0
-        reasons.append(f"NASDAQ {'上昇' if ndq > 0 else '下落' if ndq < 0 else '横ばい'}（{ndq:.2f}%）")
-
-    if dow is not None:
-        score += 1 if dow > 0 else -1 if dow < 0 else 0
-        reasons.append(f"NYダウ {'上昇' if dow > 0 else '下落' if dow < 0 else '横ばい'}（{dow:.2f}%）")
-
-    if nikkei is not None:
-        score += 1 if nikkei > 0 else -1 if nikkei < 0 else 0
-        reasons.append(f"日経平均 {'上昇' if nikkei > 0 else '下落' if nikkei < 0 else '横ばい'}（{nikkei:.2f}%）")
+    for name, val in [("S&P500", spx), ("NASDAQ", ndq), ("NYダウ", dow), ("日経平均", nikkei)]:
+        if val is None:
+            continue
+        score += 1 if val > 0 else -1 if val < 0 else 0
+        reasons.append(f"{name} {'上昇' if val > 0 else '下落' if val < 0 else '横ばい'}（{val:.2f}%）")
 
     # VIX
     vix = ch("VIX")
@@ -318,7 +253,7 @@ def score_market(
             score += 1
             reasons.append(f"VIXが低下（{vix:.2f}%）")
 
-    # 金利
+    # 10Y
     us10y = ch("米10年金利")
     if us10y is not None:
         if us10y >= 1.0:
@@ -346,17 +281,15 @@ def score_market(
         score -= 1
         reasons.append("テクノロジーが下位セクター")
 
-    # Breadth
+    # Breadth / ETF / Options
     b_score, b_reasons = _score_breadth(breadth)
     score += b_score
     reasons.extend(b_reasons)
 
-    # ETF
     f_score, f_reasons = _score_etf_flows(etf_flows)
     score += f_score
     reasons.extend(f_reasons)
 
-    # Options
     o_score, o_reasons = _score_options(options_data)
     score += o_score
     reasons.extend(o_reasons)
@@ -387,3 +320,5 @@ def classify_regime(score):
         return "ややリスクオフ"
     else:
         return "強めのリスクオフ"
+
+
