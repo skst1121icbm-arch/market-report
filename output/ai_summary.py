@@ -70,4 +70,3 @@ def generate_ai_summary(
 
     except Exception as e:
         return f"AIエラー: {e}"
-``
