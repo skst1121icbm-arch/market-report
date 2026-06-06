@@ -118,6 +118,8 @@ def fetch_us_rate_extras():
         extras["実質金利_前日比"] = None
  
     from data.fedwatch_scraper import fetch_fedwatch_rate_cuts
+    from data.fear_greed import fetch_fear_greed   # ← ✅ 追加
+
     
     # =========================
     # 3) 利下げ折込回数
@@ -126,5 +128,15 @@ def fetch_us_rate_extras():
     
     extras["利下げ折込回数"] = cuts
     extras["利下げ折込回数_変化"] = cuts_change
+
+    
+    # ✅ ✅ ✅ ここに追加
+    # =========================
+    # ④ Fear & Greed
+    # =========================
+    fg_score, fg_text = fetch_fear_greed()
+
+    extras["fear_greed"] = fg_score
+    extras["fear_greed_text"] = fg_text
 
     return extras
