@@ -39,7 +39,7 @@ def _find(label, rows):
 
 def _val(label, rows):
     """
-    常に2要素タプルを返す
+    常に (value, change_text) を返す
     """
     r = _find(label, rows)
     if not r:
@@ -52,14 +52,14 @@ def _color_change(v):
         return ""
     s = str(v)
     if s.startswith("+"):
-        return f'<span class="up">{escape(s)}</span>'
+        return f'<span style="color:#0a8f2a; font-weight:600;">{escape(s)}</span>'
     if s.startswith("-"):
-        return f'<span class="down">{escape(s)}</span>'
+        return f'<span style="color:#c62828; font-weight:600;">{escape(s)}</span>'
     return escape(s)
 
 
 def _warn(text):
-    return f'<span class="warn">{escape(str(text))}</span>'
+    return f'<span style="color:#c62828; font-weight:700;">{escape(str(text))}</span>'
 
 
 # =========================
@@ -67,7 +67,7 @@ def _warn(text):
 # =========================
 def _clean_summary_text(text: str) -> str:
     """
-    既存の <b> や markdown の ** を落として、
+    既存の <b> / ** を除去し、
     先頭の「要約: ...」行だけ太字にする
     """
     if not text:
@@ -84,11 +84,14 @@ def _clean_summary_text(text: str) -> str:
         line = line.strip()
         if not line:
             continue
+
         esc = escape(line)
         if i == 0 and line.startswith("要約:"):
-            blocks.append(f'<div class="summary-lead">{esc}</div>')
+            blocks.append(
+                f'<div style="font-weight:700; margin-bottom:8px;">{esc}</div>'
+            )
         else:
-            blocks.append(f"<div>{esc}</div>")
+            blocks.append(f'<div>{esc}</div>')
 
     return "".join(blocks) if blocks else "N/A"
 
@@ -106,215 +109,134 @@ def _stars(e):
 
 
 # =========================
-# CSS
+# INLINE STYLE HELPERS
 # =========================
-def _style_block():
+def _table_open():
     return """
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        color: #222;
-        line-height: 1.7;
-        max-width: 960px;
-        margin: 20px auto;
-      }
-
-      h2 {
-        margin: 0 0 18px 0;
-        font-size: 24px;
-      }
-
-      h3 {
-        margin: 22px 0 10px 0;
-        font-size: 18px;
-      }
-
-      p {
-        margin: 8px 0 18px 0;
-      }
-
-      .report-table {
-        width: 100%;
-        border-collapse: collapse;
-        table-layout: fixed;
-        font-size: 14px;
-        margin-bottom: 12px;
-      }
-
-      .report-table th {
-        background: #eaf3ff;
-        padding: 8px 10px;
-        border-bottom: 1px solid #d9e3f0;
-        text-align: center;
-        font-weight: 700;
-      }
-
-      .report-table td {
-        padding: 8px 10px;
-        border-bottom: 1px solid #eceff4;
-        text-align: center;
-        vertical-align: middle;
-        word-wrap: break-word;
-      }
-
-      .report-table th,
-      .report-table td {
-        border-left: none;
-        border-right: none;
-      }
-
-      .up {
-        color: #0a8f2a;
-        font-weight: 600;
-      }
-
-      .down {
-        color: #c62828;
-        font-weight: 600;
-      }
-
-      .warn {
-        color: #c62828;
-        font-weight: 700;
-      }
-
-      .summary-box {
-        background: #f8f9fb;
-        padding: 12px;
-        border-radius: 8px;
-        line-height: 1.8;
-      }
-
-      .summary-lead {
-        font-weight: 700;
-        margin-bottom: 8px;
-      }
-
-      .comment-line {
-        margin: 8px 0 18px 0;
-      }
-
-      @media only screen and (max-width: 640px) {
-        body {
-          max-width: 100%;
-          margin: 12px;
-        }
-
-        .report-table {
-          font-size: 12px;
-        }
-
-        .report-table th,
-        .report-table td {
-          padding: 6px 6px;
-        }
-      }
-    </style>
+    <table border="0" cellpadding="0" cellspacing="0"
+           width="100%"
+           style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:14px; margin-bottom:14px;">
     """
 
 
+def _table_close():
+    return "</table>"
+
+
+def _th(text, width_pct):
+    return f'''
+    <th width="{width_pct}%"
+        style="width:{width_pct}%; background:#eaf3ff; padding:8px 10px; border-bottom:1px solid #d9e3f0; text-align:center; font-weight:700;">
+        {escape(str(text))}
+    </th>
+    '''
+
+
+def _td(text, width_pct, align="center"):
+    return f'''
+    <td width="{width_pct}%"
+        align="{align}"
+        style="width:{width_pct}%; padding:8px 10px; border-bottom:1px solid #eceff4; text-align:{align}; vertical-align:middle; word-wrap:break-word;">
+        {text}
+    </td>
+    '''
+
+
+def _section_title(icon, title):
+    return f'<h3 style="margin:22px 0 10px 0;">{icon} {escape(title)}</h3>'
+
+
 # =========================
-# TABLE BUILDERS
+# TABLE RENDERERS
 # =========================
 def _table_3col(title_icon, title, rows):
-    body = []
-    for name, value, change in rows:
-        body.append(f"""
-        <tr>
-          <td>{escape(str(name))}</td>
-          <td>{_fmt_num(value) if value not in ["", None] else ""}</td>
-          <td>{_color_change(change)}</td>
-        </tr>
-        """)
-
-    return f"""
-    <h3>{title_icon} {title}</h3>
-    <table class="report-table">
-      <colgroup>
-        <col style="width:40%">
-        <col style="width:30%">
-        <col style="width:30%">
-      </colgroup>
-      <tr>
-        <th>項目</th>
-        <th>値</th>
-        <th>前日比</th>
-      </tr>
-      {''.join(body)}
-    </table>
     """
+    40 / 30 / 30 固定
+    主要指数 / 金利 / 為替 / コモディティ / 仮想通貨
+    """
+    body = []
+
+    for name, value, change in rows:
+        body.append("<tr>")
+        body.append(_td(escape(str(name)), 40, "center"))
+        body.append(_td(_fmt_num(value) if value not in ["", None] else "", 30, "center"))
+        body.append(_td(_color_change(change), 30, "center"))
+        body.append("</tr>")
+
+    return (
+        _section_title(title_icon, title)
+        + _table_open()
+        + "<tr>"
+        + _th("項目", 40)
+        + _th("値", 30)
+        + _th("前日比", 30)
+        + "</tr>"
+        + "".join(body)
+        + _table_close()
+    )
 
 
 def _table_2col(title_icon, title, rows, col1="項目", col2="値"):
-    body = []
-    for left, right in rows:
-        body.append(f"""
-        <tr>
-          <td>{escape(str(left))}</td>
-          <td>{right}</td>
-        </tr>
-        """)
-
-    return f"""
-    <h3>{title_icon} {title}</h3>
-    <table class="report-table">
-      <colgroup>
-        <col style="width:50%">
-        <col style="width:50%">
-      </colgroup>
-      <tr>
-        <th>{escape(col1)}</th>
-        <th>{escape(col2)}</th>
-      </tr>
-      {''.join(body)}
-    </table>
     """
+    50 / 50 固定
+    市場の広がり / セクター / ETF / オプション
+    """
+    body = []
+
+    for left, right in rows:
+        body.append("<tr>")
+        body.append(_td(escape(str(left)), 50, "center"))
+        body.append(_td(right, 50, "center"))
+        body.append("</tr>")
+
+    return (
+        _section_title(title_icon, title)
+        + _table_open()
+        + "<tr>"
+        + _th(col1, 50)
+        + _th(col2, 50)
+        + "</tr>"
+        + "".join(body)
+        + _table_close()
+    )
 
 
 def _table_econ(title_icon, title, events):
+    """
+    10 / 35 / 15 / 15 / 15 / 10 固定
+    国 / 指標 / 予想 / 結果 / 前回 / 重要度
+    """
     body = []
 
     if not events:
-        body.append("""
-        <tr>
-          <td colspan="6">なし</td>
-        </tr>
-        """)
+        body.append("<tr>")
+        body.append(_td("なし", 100, "center"))
+        body.append("</tr>")
     else:
         for e in events:
-            body.append(f"""
-            <tr>
-              <td>{escape(_safe(e.get("country")))}</td>
-              <td>{escape(_safe(e.get("event_name")))}</td>
-              <td>{escape(_safe(e.get("forecast")))}</td>
-              <td>{escape(_safe(e.get("actual")))}</td>
-              <td>{escape(_safe(e.get("previous")))}</td>
-              <td>{_stars(e)}</td>
-            </tr>
-            """)
+            body.append("<tr>")
+            body.append(_td(escape(_safe(e.get("country"))), 10, "center"))
+            body.append(_td(escape(_safe(e.get("event_name"))), 35, "center"))
+            body.append(_td(escape(_safe(e.get("forecast"))), 15, "center"))
+            body.append(_td(escape(_safe(e.get("actual"))), 15, "center"))
+            body.append(_td(escape(_safe(e.get("previous"))), 15, "center"))
+            body.append(_td(_stars(e), 10, "center"))
+            body.append("</tr>")
 
-    return f"""
-    <h3>{title_icon} {title}</h3>
-    <table class="report-table">
-      <colgroup>
-        <col style="width:10%">
-        <col style="width:35%">
-        <col style="width:15%">
-        <col style="width:15%">
-        <col style="width:15%">
-        <col style="width:10%">
-      </colgroup>
-      <tr>
-        <th>国</th>
-        <th>指標</th>
-        <th>予想</th>
-        <th>結果</th>
-        <th>前回</th>
-        <th>重要度</th>
-      </tr>
-      {''.join(body)}
-    </table>
-    """
+    return (
+        _section_title(title_icon, title)
+        + _table_open()
+        + "<tr>"
+        + _th("国", 10)
+        + _th("指標", 35)
+        + _th("予想", 15)
+        + _th("結果", 15)
+        + _th("前回", 15)
+        + _th("重要度", 10)
+        + "</tr>"
+        + "".join(body)
+        + _table_close()
+    )
 
 
 # =========================
@@ -369,11 +291,11 @@ def build_html(
     except Exception:
         spread_text = "N/A"
 
-    rate_comment = f"""
-    <div class="comment-line">
+    rate_comment = f'''
+    <div style="margin:8px 0 18px 0;">
       <b>10Y-2Y:</b> {spread_text}
     </div>
-    """
+    '''
 
     # ===== 為替 =====
     fx_rows = []
@@ -409,11 +331,11 @@ def build_html(
 
     etf_table = _table_2col("💰", "ETFフロー", etf_rows, col1="項目", col2="前日比")
 
-    etf_comment = f"""
-    <div class="comment-line">
+    etf_comment = f'''
+    <div style="margin:8px 0 18px 0;">
       <b>市場傾向の解釈:</b> {escape(_safe(etf_flows.get("interpretation")))}
     </div>
-    """
+    '''
 
     # ===== オプション =====
     options_rows = [
@@ -422,11 +344,11 @@ def build_html(
 
     options_table = _table_2col("🎯", "オプション", options_rows, col1="項目", col2="値")
 
-    options_comment = f"""
-    <div class="comment-line">
+    options_comment = f'''
+    <div style="margin:8px 0 18px 0;">
       <b>センチメント:</b> {escape(_safe(options_data.get("sentiment")))}
     </div>
-    """
+    '''
 
     # ===== 市場の広がり =====
     ratio = breadth.get("ratio")
@@ -450,32 +372,29 @@ def build_html(
 
     sector_table = _table_2col("✅", "セクター", sector_rows_for_table, col1="セクター", col2="前日比")
 
-    # ===== 経済指標（昨日 / 本日） =====
+    # ===== 経済指標 =====
     econ_yesterday = _table_econ("📅", "経済指標（昨日）", macro_payload.get("yesterday_events", []))
     econ_today = _table_econ("📅", "経済指標（本日）", macro_payload.get("today_events", []))
 
     # ===== まとめ =====
-    summary_section = f"""
-    <h3>🧠 まとめ</h3>
-    <div class="summary-box">
+    summary_section = f'''
+    <h3 style="margin:22px 0 10px 0;">🧠 まとめ</h3>
+    <div style="background:#f8f9fb; padding:12px; border-radius:8px; line-height:1.8;">
       {_clean_summary_text(ai_summary)}
     </div>
-    """
+    '''
 
     # ===== スコア =====
-    score_section = f"""
-    <h3>📊 スコア</h3>
+    score_section = f'''
+    <h3 style="margin:22px 0 10px 0;">📊 スコア</h3>
     <div>{escape(str(score))} ({escape(_safe(regime))})<br>{escape(_safe(signal))}</div>
-    """
+    '''
 
     return f"""
     <html>
-    <head>
-      {_style_block()}
-    </head>
-    <body>
+    <body style="font-family:Arial, sans-serif; color:#222; line-height:1.7; max-width:960px; margin:20px auto;">
 
-      <h2>Daily Market Report ({today})</h2>
+      <h2 style="margin:0 0 18px 0;">Daily Market Report ({today})</h2>
 
       {major_table}
       {rate_table}
