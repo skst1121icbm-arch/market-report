@@ -1,4 +1,14 @@
-def split_events_for_mail(events, now_jst):def split_events_for    yesterday = today - timedelta(days=1)
+from datetime import datetime, timedelta
+
+def _safe(v):
+    if v in [None, "", "None"]:
+        return ""
+    return str(v).strip()
+
+
+def split_events_for_mail(events, now_jst):
+    today = now_jst.date()
+    yesterday = today - timedelta(days=1)
 
     # 今週（月曜〜日曜）
     start_of_week = today - timedelta(days=today.weekday())
@@ -28,11 +38,11 @@ def split_events_for_mail(events, now_jst):def split_events_for    yesterday = t
 
         # ===== 今週（重要・未来のみ）=====
         if (
-            today < dt <= end_of_week                 # ✅未来だけ
-            and e.get("event_status") != "結果"        # ✅未発表
+            today < dt <= end_of_week
+            and e.get("event_status") != "結果"
             and (
-                "高" in str(e.get("importance_label"))  # ★★★
-                or "中" in str(e.get("importance_label"))  # ★★
+                "高" in str(e.get("importance_label"))
+                or "中" in str(e.get("importance_label"))
             )
         ):
             week_events.append(e)
@@ -42,4 +52,3 @@ def split_events_for_mail(events, now_jst):def split_events_for    yesterday = t
         "today_events": today_events,
         "week_events": week_events,
     }
-    today = now_jst.date()
