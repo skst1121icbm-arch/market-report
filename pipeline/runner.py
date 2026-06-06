@@ -26,28 +26,24 @@ def run():
 
     now = now_jst()
 
-    # =========================
+    # ===================================
     # ① 市場データ
-    # =========================
+    # ===================================
     market_df = download_ohlc(list(MARKET_SYMBOLS.values()))
     sector_df = download_ohlc(list(SECTOR_ETFS.values()))
 
     print("[DEBUG] market_df is None =", market_df is None)
+
     if market_df is not None:
-        print("[DEBUG] df columns =", market_df.columns)   # ← 依頼どおり追加
+        print("[DEBUG] df columns =", market_df.columns)
         print("[DEBUG] market_df head =")
         print(market_df.head())
     else:
         print("[DEBUG] market_df is None → yfinance失敗")
 
-    print("[DEBUG] sector_df is None =", sector_df is None)
-    if sector_df is not None:
-        print("[DEBUG] sector_df columns =", sector_df.columns)
-        print("[DEBUG] sector_df head =")
-        print(sector_df.head())
-    else:
-        print("[DEBUG] sector_df is None → yfinance失敗")
-
+    # ===================================
+    # 行データ生成
+    # ===================================
     market_rows = build_rows(market_df, MARKET_SYMBOLS)
     sector_rows = build_rows(sector_df, SECTOR_ETFS)
 
@@ -56,9 +52,9 @@ def run():
 
     sector_attention = summarize_sector_attention(sector_rows)
 
-    # =========================
+    # ===================================
     # ② 経済指標
-    # =========================
+    # ===================================
     events = fetch_minkabu_economic_events()
     macro_payload = split_events_for_mail(events, now)
 
@@ -68,16 +64,20 @@ def run():
     print("[DEBUG] recent_events =", recent_events)
     print("[DEBUG] upcoming_events =", upcoming_events)
 
-    # =========================
-    # ③ 金利（FRED）
-    # =========================
+    # ===================================
+    # ③ 金利
+    # ===================================
     rate_extras = fetch_us_rate_extras()
     print("[DEBUG] rate_extras =", rate_extras)
 
-    # =========================
-    # ④ 内部データ
-    # =========================
-    breadth = fetch_market_breadth()
+    # ===================================
+    # ✅ ④ 内部データ（ここが今回の変更ポイント）
+    # ===================================
+
+    # ✅ Breadthに market_rows を渡す
+    breadth = fetch_market_breadth(market_rows)
+
+    # ✅ ETF / Options
     etf_flows = fetch_etf_flows(market_rows)
     options_data = fetch_options_data(market_rows)
 
@@ -85,9 +85,9 @@ def run():
     print("[DEBUG] etf_flows =", etf_flows)
     print("[DEBUG] options_data =", options_data)
 
-    # =========================
+    # ===================================
     # ⑤ スコア
-    # =========================
+    # ===================================
     score, reasons = score_market(
         market_rows,
         sector_rows,
@@ -103,9 +103,9 @@ def run():
     print("[DEBUG] score =", score)
     print("[DEBUG] reasons =", reasons)
 
-    # =========================
+    # ===================================
     # ⑥ シグナル
-    # =========================
+    # ===================================
     signal, signal_details = generate_trend_signal(
         score,
         market_rows,
@@ -117,15 +117,15 @@ def run():
     print("[DEBUG] signal =", signal)
     print("[DEBUG] signal_details =", signal_details)
 
-    # =========================
+    # ===================================
     # ⑦ テーマ
-    # =========================
+    # ===================================
     themes = detect_market_themes(sector_rows, market_rows, reasons)
     print("[DEBUG] themes =", themes)
 
-    # =========================
+    # ===================================
     # ⑧ AI
-    # =========================
+    # ===================================
     ai_summary = generate_ai_summary(
         market_rows,
         sector_rows,
@@ -142,11 +142,11 @@ def run():
         themes=themes,
     )
 
-    print("[DEBUG] ai_summary =", ai_summary[:300] if isinstance(ai_summary, str) else ai_summary)
+    print("[DEBUG] ai_summary =", ai_summary[:200])
 
-    # =========================
+    # ===================================
     # ⑨ HTML
-    # =========================
+    # ===================================
     html = build_html(
         market_rows,
         sector_rows,
@@ -169,9 +169,9 @@ def run():
 
     print("[DEBUG] HTML saved =", LATEST_HTML_FILE)
 
-    # =========================
+    # ===================================
     # ⑩ メール
-    # =========================
+    # ===================================
     send_mail("Daily Market Report", html)
 
     print("===== END MARKET AI =====")
