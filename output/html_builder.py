@@ -306,7 +306,7 @@ def build_html(
 
     # ===== 主要指数 =====
     major_rows = []
-    for label in ["S&P500", "NASDAQ", "NYダウ", "Russell2000", "日経平均"]:
+    for label in ["S&P500", "NASDAQ", "NYダウ", "Russell2000", "日経平均", "VIX"]:
         v, c = _val(label, market_rows)
         major_rows.append((label, v, c))
     major_table = _table_3col("🚀", "主要指数", major_rows)
