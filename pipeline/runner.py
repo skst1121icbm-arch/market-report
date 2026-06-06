@@ -7,7 +7,6 @@ from data.market_internals import (
     fetch_market_breadth,
     fetch_etf_flows,
     fetch_options_data,
-    detect_market_themes,
 )
 
 from logic.market_calc import build_rows, summarize_sector_attention
@@ -27,31 +26,16 @@ def run():
     now = now_jst()
 
     # =========================
-    # ① 市場データ取得
+    # 市場データ
     # =========================
     market_df = download_ohlc(list(MARKET_SYMBOLS.values()))
     sector_df = download_ohlc(list(SECTOR_ETFS.values()))
 
-    print("[DEBUG] market_df is None =", market_df is None)
-
-    if market_df is not None:
-        print("[DEBUG] df columns =", market_df.columns)
-    else:
-        print("[DEBUG] market_df is None → yfinance失敗")
-
-    # =========================
-    # ② 行データ生成
-    # =========================
     market_rows = build_rows(market_df, MARKET_SYMBOLS)
     sector_rows = build_rows(sector_df, SECTOR_ETFS)
 
-    print("[DEBUG] market_rows =", market_rows[:5])
-    print("[DEBUG] sector_rows =", sector_rows[:5])
-
-    sector_attention = summarize_sector_attention(sector_rows)
-
     # =========================
-    # ③ 経済指標
+    # 経済指標
     # =========================
     events = fetch_minkabu_economic_events()
     macro_payload = split_events_for_mail(events, now)
@@ -60,23 +44,19 @@ def run():
     upcoming_events = macro_payload["today_events"]
 
     # =========================
-    # ④ 金利
+    # 金利
     # =========================
     rate_extras = fetch_us_rate_extras()
 
     # =========================
-    # ✅ ⑤ 内部データ
+    # 内部データ
     # =========================
     breadth = fetch_market_breadth(market_rows, sector_rows)
     etf_flows = fetch_etf_flows(market_rows)
     options_data = fetch_options_data(market_rows)
 
-    print("[DEBUG] breadth =", breadth)
-    print("[DEBUG] etf_flows =", etf_flows)
-    print("[DEBUG] options_data =", options_data)
-
     # =========================
-    # ⑥ スコア
+    # スコア
     # =========================
     score, reasons = score_market(
         market_rows,
@@ -91,23 +71,18 @@ def run():
     regime = classify_regime(score)
 
     # =========================
-    # ⑦ シグナル
+    # シグナル
     # =========================
     signal, signal_details = generate_trend_signal(
         score,
         market_rows,
-        sector_attention,
+        summarize_sector_attention(sector_rows),
         recent_events,
         upcoming_events,
     )
 
     # =========================
-    # ⑧ テーマ
-    # =========================
-    themes = detect_market_themes(sector_rows, market_rows, reasons)
-
-    # =========================
-    # ⑨ AI
+    # AI（テーマ削除）
     # =========================
     ai_summary = generate_ai_summary(
         market_rows,
@@ -122,13 +97,10 @@ def run():
         breadth=breadth,
         etf_flows=etf_flows,
         options_data=options_data,
-        themes=themes,
     )
 
-    print("[DEBUG] ai_summary =", ai_summary[:200])
-
     # =========================
-    # ⑩ HTML
+    # HTML
     # =========================
     html = build_html(
         market_rows,
@@ -143,24 +115,12 @@ def run():
         breadth,
         etf_flows,
         options_data,
-        themes,
         rate_extras,
     )
 
     with open(LATEST_HTML_FILE, "w", encoding="utf-8") as f:
         f.write(html)
 
-    print("[DEBUG] HTML saved =", LATEST_HTML_FILE)
-
-    # =========================
-    # ⑪ メール
-    # =========================
     send_mail("Daily Market Report", html)
 
     print("===== END MARKET AI =====")
-
-    return {
-        "score": score,
-        "regime": regime,
-        "breadth": breadth,
-    }
