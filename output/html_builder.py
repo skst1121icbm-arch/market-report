@@ -1,187 +1,9 @@
 from utils.datetime_utils import now_jst
 
 
-# ============================
+# =========================
 # format
-"""# ============================
-    <tr>
-      <td>{name}</td>
-      <td style="text-align:right;">{value}</td>
-      <td style="text-align:right;">{_color(change)}</td>
-    </tr>
-    """
-
-
-# ============================
-# HTML
-# ============================
-def build_html(
-    market_rows,
-    sector_rows,
-    score,
-    regime,
-    signal,
-    signal_details,
-    reasons,
-    ai_summary,
-    macro_payload,
-    breadth,
-    etf_flows,
-    options_data,
-    rate_extras,
-):
-
-    today = now_jst().strftime("%Y-%m-%d")
-
-    # ========= MARKET =========
-    data = ""
-
-    # 指数
-    for label in ["S&P500", "NASDAQ", "NYダウ", "Russell2000", "日経平均"]:
-        v, c, _ = _val(label, market_rows)
-        data += _row(label, v, c)
-
-    # VIX
-    v, c, _ = _val("VIX", market_rows)
-    data += _row("VIX", v, c)
-
-    # 金利
-    y10, y10c, _ = _val("米10年金利", market_rows)
-    y2 = rate_extras.get("米2年債利回り")
-    y2c = ""  # 必要なら追加
-
-    # ✅ スプレッド
-    try:
-        spread = float(y10) - float(y2)
-        spread = f"{spread:.2f}"
-    except:
-        spread = "N/A"
-
-    data += _row("米10年債利回り", y10, y10c)
-    data += _row("米2年債利回り", _fmt_num(y2), "")
-    data += _row("10Y-2Y", spread, "")
-
-    # 為替
-    for label in ["DXY", "USD/JPY", "EUR/USD"]:
-        v, c, _ = _val(label, market_rows)
-        data += _row(label, v, c)
-
-    # コモディティ
-    for label in ["WTI原油", "ゴールド", "銅"]:
-        v, c, _ = _val(label, market_rows)
-        data += _row(label, v, c)
-
-    # 仮想通貨
-    for label in ["BTC (USD)", "ETH (USD)", "XRP (USD)", "SOL (USD)"]:
-        v, c, _ = _val(label, market_rows)
-        data += _row(label, v, c)
-
-    # ETF
-    data += _row("SPY", "", etf_flows.get("SPY"))
-    data += _row("QQQ", "", etf_flows.get("QQQ"))
-    data += _row("IWM", "", etf_flows.get("IWM"))
-
-    market_table = f"""
-    <h3>マーケット</h3>
-    <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
-      <tr>
-        <th>項目</th>
-        <th>値</th>
-        <th>前日比</th>
-      </tr>
-      {data}
-    </table>
-    """
-
-    # ========= BREADTH =========
-    breadth_table = f"""
-    <h3>市場の広がり（騰落の強さ）</h3>
-    <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
-      <tr>
-        <th>上昇銘柄比率</th>
-        <th>状態</th>
-      </tr>
-      <tr>
-        <td>{_fmt_pct(breadth.get("ratio"))}</td>
-        <td>{breadth.get("state")}</td>
-      </tr>
-    </table>
-    """
-
-    # ========= SECTOR =========
-    sector_rows_html = ""
-    for r in sector_rows:
-        sector_rows_html += f"""
-        <tr>
-          <td>{r['label']}</td>
-          <td style="text-align:right;">{_color(r['change_text'])}</td>
-        </tr>
-        """
-
-    sector_table = f"""
-    <h3>セクター</h3>
-    <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
-      <tr>
-        <th>セクター</th>
-        <th>前日比</th>
-      </tr>
-      {sector_rows_html}
-    </table>
-    """
-
-    # ========= ECONOMIC =========
-    econ_rows = ""
-    for e in (macro_payload.get("yesterday_events", []) + macro_payload.get("today_events", [])):
-        econ_rows += f"""
-        <tr>
-          <td>{e.get("country")}</td>
-          <td>{e.get("event_name")}</td>
-          <td>{e.get("forecast")}</td>
-          <td>{e.get("actual")}</td>
-          <td>{e.get("previous")}</td>
-        </tr>
-        """
-
-    econ_table = f"""
-    <h3>経済指標</h3>
-    <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
-      <tr>
-        <th>国</th>
-        <th>指標</th>
-        <th>予想</th>
-        <th>結果</th>
-        <th>前回</th>
-      </tr>
-      {econ_rows}
-    </table>
-    """
-
-    # ========= AI =========
-    summary = ai_summary.replace("\n", "<br>")
-
-    html = f"""
-    <html>
-    <body>
-
-    <h2>Daily Market Report ({today})</h2>
-
-    {market_table}
-    {breadth_table}
-    {sector_table}
-    {econ_table}
-
-    <h3>AIサマリー</h3>
-    {summary}
-
-    <h3>スコア</h3>
-    {score} ({regime})<br>
-    シグナル: {signal}
-
-    </body>
-    </html>
-    """
-
-    return html
+# =========================
 def _fmt_num(v):
     try:
         return f"{float(v):.2f}"
@@ -206,13 +28,9 @@ def _find(label, rows):
 def _val(label, rows):
     r = _find(label, rows)
     if not r:
-        return None, None, None
+        return None, None
 
-    return (
-        _fmt_num(r.get("value")),
-        r.get("change_text"),
-        r.get("change_pct")
-    )
+    return r.get("value"), r.get("change_text")
 
 
 def _color(text):
@@ -223,8 +41,214 @@ def _color(text):
         return f'<span style="color:green">{text}</span>'
     elif str(text).startswith("-"):
         return f'<span style="color:red">{text}</span>'
-
     return text
 
 
 def _row(name, value, change):
+    return f"""
+    <tr>
+      <td>{name}</td>
+      <td style="text-align:right;">{_fmt_num(value)}</td>
+      <td style="text-align:right;">{_color(change)}</td>
+    </tr>
+    """
+
+
+def _simple_row(name, value):
+    return f"""
+    <tr>
+      <td>{name}</td>
+      <td style="text-align:right;">{value}</td>
+    </tr>
+    """
+
+
+def _table(title, header, body):
+    return f"""
+    <h3>{title}</h3>
+    <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
+      {header}
+      {body}
+    </table>
+    """
+
+
+# =========================
+# main HTML
+# =========================
+def build_html(
+    market_rows,
+    sector_rows,
+    score,
+    regime,
+    signal,
+    signal_details,
+    reasons,
+    ai_summary,
+    macro_payload,
+    breadth,
+    etf_flows,
+    options_data,
+    rate_extras,
+):
+
+    # ===== 主要指数 =====
+    body = ""
+    for label in ["S&P500", "NASDAQ", "NYダウ", "Russell2000", "日経平均"]:
+        v, c = _val(label, market_rows)
+        body += _row(label, v, c)
+
+    major = _table(
+        "主要指数",
+        "<tr><th>項目</th><th>値</th><th>前日比</th></tr>",
+        body
+    )
+
+    # ===== 金利 =====
+    y10, y10c = _val("米10年金利", market_rows)
+    y2 = rate_extras.get("米2年債利回り")
+
+    try:
+        spread = float(y10) - float(y2)
+        spread_text = f"{spread:.2f}"
+    except:
+        spread_text = "N/A"
+
+    body = ""
+    body += _row("米10年債利回り", y10, y10c)
+    body += _row("米2年債利回り", y2, "")
+
+    rate_table = _table(
+        "金利",
+        "<tr><th>項目</th><th>値</th><th>前日比</th></tr>",
+        body
+    )
+
+    rate_comment = f"""
+    <p><b>10年債利回り - 2年債利回り:</b> {spread_text}</p>
+    """
+
+    # ===== 為替 =====
+    body = ""
+    for l in ["DXY", "USD/JPY", "EUR/USD"]:
+        v, c = _val(l, market_rows)
+        body += _row(l, v, c)
+
+    fx = _table(
+        "為替",
+        "<tr><th>項目</th><th>値</th><th>前日比</th></tr>",
+        body
+    )
+
+    # ===== コモディティ =====
+    body = ""
+    for l in ["WTI原油", "ゴールド", "銅"]:
+        v, c = _val(l, market_rows)
+        body += _row(l, v, c)
+
+    commodity = _table(
+        "コモディティ",
+        "<tr><th>項目</th><th>値</th><th>前日比</th></tr>",
+        body
+    )
+
+    # ===== 仮想通貨 =====
+    body = ""
+    for l in ["BTC (USD)", "ETH (USD)", "XRP (USD)", "SOL (USD)"]:
+        v, c = _val(l, market_rows)
+        body += _row(l, v, c)
+
+    crypto = _table(
+        "仮想通貨",
+        "<tr><th>項目</th><th>値</th><th>前日比</th></tr>",
+        body
+    )
+
+    # ===== ETF =====
+    body = ""
+    body += _row("SPY", "", etf_flows.get("SPY"))
+    body += _row("QQQ", "", etf_flows.get("QQQ"))
+    body += _row("IWM", "", etf_flows.get("IWM"))
+
+    etf_table = _table(
+        "ETFフロー",
+        "<tr><th>銘柄</th><th>値</th><th>前日比</th></tr>",
+        body
+    )
+
+    etf_comment = f"""
+    <p><b>市場傾向の解釈:</b> {etf_flows.get("interpretation")}</p>
+    """
+
+    # ===== Options =====
+    body = ""
+    body += _simple_row("Put/Call", options_data.get("put_call"))
+
+    options_table = _table(
+        "オプション",
+        "<tr><th>指標</th><th>値</th></tr>",
+        body
+    )
+
+    options_comment = f"""
+    <p><b>センチメント:</b> {options_data.get("sentiment")}</p>
+    """
+
+    # ===== Breadth =====
+    breadth_table = _table(
+        "市場の広がり",
+        "<tr><th>指標</th><th>値</th></tr>",
+        f"""
+        <tr><td>上昇銘柄比率</td><td>{_fmt_pct(breadth.get("ratio"))}</td></tr>
+        <tr><td>状態</td><td>{breadth.get("state")}</td></tr>
+        """
+    )
+
+    # ===== セクター =====
+    body = ""
+    for r in sector_rows:
+        body += f"""
+        <tr>
+          <td>{r['label']}</td>
+          <td style="text-align:right;">{_color(r['change_text'])}</td>
+        </tr>
+        """
+
+    sector_table = _table(
+        "セクター",
+        "<tr><th>セクター</th><th>前日比</th></tr>",
+        body
+    )
+
+    # ===== HTML =====
+    html = f"""
+    <html>
+    <body>
+
+    <h2>Daily Market Report</h2>
+
+    {major}
+    {rate_table}
+    {rate_comment}
+    {fx}
+    {commodity}
+    {crypto}
+    {etf_table}
+    {etf_comment}
+    {options_table}
+    {options_comment}
+    {breadth_table}
+    {sector_table}
+
+    <h3>AIサマリー</h3>
+    {ai_summary.replace("\n","<br>")}
+
+    <h3>スコア</h3>
+    {score} ({regime})<br>
+    {signal}
+
+    </body>
+    </html>
+    """
+
+    return html
