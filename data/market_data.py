@@ -1,5 +1,5 @@
 import yfinance as yf
-_ohlc(symbols, period="5d", interval="1d"):import pandas as pd
+import pandas as", interval="1d"):import pandas as pd
     try:
         df = yf.download(
             tickers=symbols,
@@ -7,7 +7,7 @@ _ohlc(symbols, period="5d", interval="1d"):import pandas as pd
             interval=interval,
             auto_adjust=False,
             progress=False,
-            threads=False,
+            threads=False
         )
 
         if df is None or len(df) == 0:
@@ -22,21 +22,18 @@ _ohlc(symbols, period="5d", interval="1d"):import pandas as pd
 
 
 def get_close_pair(df, symbol):
-    """
-    yfinance.download() は
-    - 複数銘柄: MultiIndex columns
-    - 単一銘柄: SingleIndex columns
-    の両パターンがあるため両対応
-    """
     try:
         if df is None:
             return None, None
 
+        # ✅ 複数銘柄
         if isinstance(df.columns, pd.MultiIndex):
             if symbol not in df.columns.get_level_values(0):
                 return None, None
 
             closes = df[symbol]["Close"].dropna()
+
+        # ✅ 単一銘柄
         else:
             if "Close" not in df.columns:
                 return None, None
@@ -45,10 +42,7 @@ def get_close_pair(df, symbol):
         if len(closes) < 2:
             return None, None
 
-        curr = float(closes.iloc[-1])
-        prev = float(closes.iloc[-2])
-
-        return curr, prev
+        return float(closes.iloc[-1]), float(closes.iloc[-2])
 
     except Exception:
         return None, None
