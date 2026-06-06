@@ -119,10 +119,12 @@ def fetch_us_rate_extras():
 
     # =========================
     # 3) 利下げ折込回数
-    # =========================
-    # 今回確認できたFRED系列では、FEDFUNDSは月次系列。
-    # この実装では保守的に N/A 扱い（None）にしておく。
-    extras["利下げ折込回数"] = None
-    extras["利下げ折込回数_変化"] = None
+    # =========================    
+    from data.fedwatch_scraper import fetch_fedwatch_rate_cuts
+
+    cuts, cuts_change = fetch_fedwatch_rate_cuts()
+    
+    extras["利下げ折込回数"] = cuts
+    extras["利下げ折込回数_変化"] = cuts_change
 
     return extras
