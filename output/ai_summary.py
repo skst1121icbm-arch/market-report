@@ -2,7 +2,7 @@ import os
 from openai import OpenAI
 
 
-def generate recent_events,def generate_ai_summary(
+def generate_events,def generate_ai_summary(
     upcoming_events,
     score,
     regime,
@@ -21,7 +21,7 @@ def generate recent_events,def generate_ai_summary(
 
     client = OpenAI(api_key=api_key)
 
-    # 市場
+    # 市場データ
     market_lines = []
     for r in market_rows:
         label = r.get("label", "")
@@ -35,23 +35,25 @@ def generate recent_events,def generate_ai_summary(
         change = r.get("change_text", "N/A")
         sector_lines.append(f"{label} {change}")
 
-    # プロンプト（安全な連結方式）
+    # プロンプト
     prompt = "あなたは金融アナリストです。\n\n"
 
-    prompt += "以下をもとに市場概況を書いてください。\n"
-    prompt += "・箇条書き禁止\n"
-    prompt += "・500〜800文字\n"
-    prompt += "・最後にトレンドを一言\n\n"
+    prompt += "以下のデータをもとに市場概況を書いてください。\n"
+    prompt += "条件:\n"
+    prompt += "- 箇条書き禁止\n"
+    prompt += "- 500〜800文字\n"
+    prompt += "- 最後にトレンドを一言\n\n"
 
-    prompt += "【市場】\n" + "\n".join(market_lines) + "\n\n"
-    prompt += "【セクター】\n" + "\n".join(sector_lines) + "\n\n"
+    prompt += "市場:\n" + "\n".join(market_lines) + "\n\n"
+    prompt += "セクター:\n" + "\n".join(sector_lines) + "\n\n"
 
-    prompt += f"【Breadth】\n{breadth}\n\n"
-    prompt += f"【ETF】\n{etf_flows}\n\n"
-    prompt += f"【Options】\n{options_data}\n\n"
-    prompt += f"【テーマ】\n{themes}\n\n"
-    prompt += f"【スコア】\n{score} / {regime}\n\n"
-    prompt += f"【シグナル】\n{signal}\n"
+    prompt += f"Breadth:\n{breadth}\n\n"
+    prompt += f"ETF:\n{etf_flows}\n\n"
+    prompt += f"Options:\n{options_data}\n\n"
+    prompt += f"テーマ:\n{themes}\n\n"
+
+    prompt += f"スコア:\n{score} / {regime}\n\n"
+    prompt += f"シグナル:\n{signal}\n"
 
     try:
         res = client.chat.completions.create(
