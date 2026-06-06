@@ -1,5 +1,5 @@
-from config.settings import ERROR_LOG_FILE
-from utils.datetime_utils import now_jst
+from config.settings import ERROR_LOG_FILEfrom config.settings.datetime_utils import now_jst
+
 
 def log_error(msg, file_path=ERROR_LOG_FILE):
     try:
