@@ -91,7 +91,7 @@ def _clean_summary_text(text: str) -> str:
                 f'<div style="font-weight:700; margin-bottom:8px;">{esc}</div>'
             )
         else:
-            blocks.append(f'<div>{esc}</div>')
+            blocks.append(f"<div>{esc}</div>")
 
     return "".join(blocks) if blocks else "N/A"
 
@@ -132,9 +132,11 @@ def _th(text, width_pct):
     '''
 
 
-def _td(text, width_pct, align="center"):
+def _td(text, width_pct, align="center", colspan=None):
+    colspan_attr = f' colspan="{colspan}"' if colspan else ""
     return f'''
-    <td width="{width_pct}%"
+    <td{colspan_attr}
+        width="{width_pct}%"
         align="{align}"
         style="width:{width_pct}%; padding:8px 10px; border-bottom:1px solid #eceff4; text-align:{align}; vertical-align:middle; word-wrap:break-word;">
         {text}
@@ -179,7 +181,7 @@ def _table_3col(title_icon, title, rows):
 def _table_2col(title_icon, title, rows, col1="項目", col2="値"):
     """
     50 / 50 固定
-    市場の広がり / セクター / ETF / オプション
+    ETF / オプション / 市場の広がり / セクター
     """
     body = []
 
@@ -210,7 +212,7 @@ def _table_econ(title_icon, title, events):
 
     if not events:
         body.append("<tr>")
-        body.append(_td("なし", 100, "center"))
+        body.append(_td("なし", 100, "center", colspan=6))
         body.append("</tr>")
     else:
         for e in events:
@@ -350,7 +352,7 @@ def build_html(
     </div>
     '''
 
-    # ===== 市場の広がり =====
+    # ===== 市場の広がり（状態はコメントへ移動）=====
     ratio = breadth.get("ratio")
     ratio_text = _fmt_pct(ratio)
     if ratio is not None and ratio <= 30:
@@ -358,10 +360,15 @@ def build_html(
 
     breadth_rows = [
         ("上昇銘柄比率", ratio_text),
-        ("状態", escape(_safe(breadth.get("state")))),
     ]
 
     breadth_table = _table_2col("📈", "市場の広がり", breadth_rows, col1="項目", col2="値")
+
+    breadth_comment = f'''
+    <div style="margin:8px 0 18px 0;">
+      <b>状態:</b> {escape(_safe(breadth.get("state")))}
+    </div>
+    '''
 
     # ===== セクター =====
     sector_rows_for_table = []
@@ -411,6 +418,8 @@ def build_html(
       {options_comment}
 
       {breadth_table}
+      {breadth_comment}
+
       {sector_table}
 
       {econ_yesterday}
