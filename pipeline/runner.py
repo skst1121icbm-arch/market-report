@@ -1,4 +1,6 @@
-from config.settings import MARKET_SYMBOLS, SECTOR_ETFS, LATEST_HTML_FILEfrom config.settings import data.market_data import download_ohlc
+from config.settings import MARKET_SYMBOLS, SECTOR_ETFS, LATEST_HTML_FILE
+
+from data.market_data import download_ohlc
 from data.economic_calendar import fetch_minkabu_economic_events, split_events_for_mail
 from data.fred_api import fetch_us_rate_extras
 from data.market_internals import (
@@ -24,9 +26,9 @@ def run():
 
     now = now_jst()
 
-    # ===================================
+    # =========================
     # ① 市場データ取得
-    # ===================================
+    # =========================
     market_df = download_ohlc(list(MARKET_SYMBOLS.values()))
     sector_df = download_ohlc(list(SECTOR_ETFS.values()))
 
@@ -34,63 +36,48 @@ def run():
 
     if market_df is not None:
         print("[DEBUG] df columns =", market_df.columns)
-        print("[DEBUG] market_df head =")
-        print(market_df.head())
     else:
         print("[DEBUG] market_df is None → yfinance失敗")
 
-    # ===================================
+    # =========================
     # ② 行データ生成
-    # ===================================
+    # =========================
     market_rows = build_rows(market_df, MARKET_SYMBOLS)
     sector_rows = build_rows(sector_df, SECTOR_ETFS)
 
     print("[DEBUG] market_rows =", market_rows[:5])
     print("[DEBUG] sector_rows =", sector_rows[:5])
 
-    # ===================================
-    # セクター分析
-    # ===================================
     sector_attention = summarize_sector_attention(sector_rows)
 
-    # ===================================
+    # =========================
     # ③ 経済指標
-    # ===================================
+    # =========================
     events = fetch_minkabu_economic_events()
     macro_payload = split_events_for_mail(events, now)
 
     recent_events = macro_payload["yesterday_events"]
     upcoming_events = macro_payload["today_events"]
 
-    print("[DEBUG] recent_events =", recent_events)
-    print("[DEBUG] upcoming_events =", upcoming_events)
-
-    # ===================================
+    # =========================
     # ④ 金利
-    # ===================================
+    # =========================
     rate_extras = fetch_us_rate_extras()
-    print("[DEBUG] rate_extras =", rate_extras)
 
-    # ===================================
-    # ✅ ⑤ 内部データ（最重要）
-    # ===================================
-
-    # ✅ Market Breadth（market + sector）
+    # =========================
+    # ✅ ⑤ 内部データ
+    # =========================
     breadth = fetch_market_breadth(market_rows, sector_rows)
-
-    # ✅ ETFフロー
     etf_flows = fetch_etf_flows(market_rows)
-
-    # ✅ Options（VIXベース）
     options_data = fetch_options_data(market_rows)
 
     print("[DEBUG] breadth =", breadth)
     print("[DEBUG] etf_flows =", etf_flows)
     print("[DEBUG] options_data =", options_data)
 
-    # ===================================
+    # =========================
     # ⑥ スコア
-    # ===================================
+    # =========================
     score, reasons = score_market(
         market_rows,
         sector_rows,
@@ -103,12 +90,9 @@ def run():
 
     regime = classify_regime(score)
 
-    print("[DEBUG] score =", score)
-    print("[DEBUG] reasons =", reasons)
-
-    # ===================================
-    # ⑦ トレンドシグナル
-    # ===================================
+    # =========================
+    # ⑦ シグナル
+    # =========================
     signal, signal_details = generate_trend_signal(
         score,
         market_rows,
@@ -117,23 +101,14 @@ def run():
         upcoming_events,
     )
 
-    print("[DEBUG] signal =", signal)
-    print("[DEBUG] signal_details =", signal_details)
-
-    # ===================================
+    # =========================
     # ⑧ テーマ
-    # ===================================
-    themes = detect_market_themes(
-        sector_rows,
-        market_rows,
-        reasons
-    )
+    # =========================
+    themes = detect_market_themes(sector_rows, market_rows, reasons)
 
-    print("[DEBUG] themes =", themes)
-
-    # ===================================
-    # ⑨ AIサマリー
-    # ===================================
+    # =========================
+    # ⑨ AI
+    # =========================
     ai_summary = generate_ai_summary(
         market_rows,
         sector_rows,
@@ -152,9 +127,9 @@ def run():
 
     print("[DEBUG] ai_summary =", ai_summary[:200])
 
-    # ===================================
-    # ⑩ HTML生成
-    # ===================================
+    # =========================
+    # ⑩ HTML
+    # =========================
     html = build_html(
         market_rows,
         sector_rows,
@@ -177,9 +152,9 @@ def run():
 
     print("[DEBUG] HTML saved =", LATEST_HTML_FILE)
 
-    # ===================================
-    # ⑪ メール送信
-    # ===================================
+    # =========================
+    # ⑪ メール
+    # =========================
     send_mail("Daily Market Report", html)
 
     print("===== END MARKET AI =====")
@@ -188,7 +163,4 @@ def run():
         "score": score,
         "regime": regime,
         "breadth": breadth,
-        "etf_flows": etf_flows,
-        "options_data": options_data,
     }
-
