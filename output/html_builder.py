@@ -351,18 +351,38 @@ def build_html(
     major_table = _table_3col("🚀", "主要指数", major_rows)
 
     # ===== 金利 =====
-    y10, y10c = _val("米10年金利", market_rows)
-    y2 = rate_extras.get("米2年債利回り")
-    y2_change = rate_extras.get("米2年債利回り_前日比_pct")
-    try:
-        y2_change_text = f"{y2_change:+.2f}%"
-    except Exception:
-        y2_change_text = "N/A"
+y10, y10c = _val("米10年金利", market_rows)
 
-    rate_rows = [
-        ("米10年債利回り", y10, y10c),
-        ("米2年債利回り", y2, y2_change_text),
-    ]
+y2 = rate_extras.get("米2年債利回り")
+y2_change = rate_extras.get("米2年債利回り_前日比_pct")
+try:
+    y2_change_text = f"{y2_change:+.2f}%"
+except Exception:
+    y2_change_text = "N/A"
+
+# ✅ NEW：実質金利
+real_rate = rate_extras.get("実質金利")
+real_rate_change = rate_extras.get("実質金利_前日比")
+try:
+    real_rate_change_text = f"{real_rate_change:+.2f}%"
+except Exception:
+    real_rate_change_text = "N/A"
+
+# ✅ NEW：利下げ折込回数
+cut_expect = rate_extras.get("利下げ折込回数")
+cut_expect_change = rate_extras.get("利下げ折込回数_変化")
+try:
+    cut_expect_change_text = f"{cut_expect_change:+.2f}"
+except Exception:
+    cut_expect_change_text = "N/A"
+
+# ✅ 最終テーブル
+rate_rows = [
+    ("米10年債利回り", y10, y10c),
+    ("米2年債利回り", y2, y2_change_text),
+    ("実質金利", real_rate, real_rate_change_text),       # ←追加
+    ("利下げ折込回数", cut_expect, cut_expect_change_text),  # ←追加
+]
     rate_table = _table_3col("✅", "金利", rate_rows)
 
     try:
