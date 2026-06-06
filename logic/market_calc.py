@@ -15,11 +15,9 @@ def format_change(change):
 
 
 def build_rows(df, symbol_map):
-
     rows = []
 
     for label, symbol in symbol_map.items():
-
         curr, prev = get_close_pair(df, symbol)
         change = calc_change_pct(curr, prev)
 
@@ -39,7 +37,6 @@ def build_rows(df, symbol_map):
 
 
 def summarize_sector_attention(sector_rows, top_n=3):
-
     valid = [r for r in sector_rows if r.get("change_pct") is not None]
 
     if not valid:
