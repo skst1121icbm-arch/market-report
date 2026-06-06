@@ -387,7 +387,6 @@ def build_html(
         ("米10年債利回り", y10, y10c),
         ("米2年債利回り", y2, y2_change_text),
         ("実質金利", real_rate, real_rate_change_text),
-        ("利下げ折込回数", cut_expect, cut_expect_change_text),
     ]
     
     rate_table = _table_3col("✅", "金利", rate_rows)
