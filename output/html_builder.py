@@ -2,7 +2,7 @@ from utils.datetime_utils import now_jst
 
 
 # =========================
-# 基本フォーマット
+# format
 # =========================
 def _fmt_num(v):
     try:
@@ -19,9 +19,7 @@ def _fmt_pct(v):
 
 
 def _safe(v):
-    if v in [None, "", "None"]:
-        return "N/A"
-    return str(v)
+    return "N/A" if v in [None, "", "None"] else str(v)
 
 
 def _find(label, rows):
@@ -38,45 +36,40 @@ def _val(label, rows):
     return r.get("value"), r.get("change_text")
 
 
-def _color(text):
-    if not text:
+def _color(v):
+    if not v:
         return ""
-
-    if str(text).startswith("+"):
-        return f'<span style="color:green">{text}</span>'
-    elif str(text).startswith("-"):
-        return f'<span style="color:red">{text}</span>'
-
-    return text
+    if str(v).startswith("+"):
+        return f'<span style="color:#0a8f2a;">{v}</span>'
+    if str(v).startswith("-"):
+        return f'<span style="color:#c62828;">{v}</span>'
+    return v
 
 
-def _warn(text):
-    return f'<span style="color:red;font-weight:bold;">{text}</span>'
+def _warn(v):
+    return f'<span style="color:#c62828;font-weight:bold;">{v}</span>'
 
 
 # =========================
-# AI整形
+# summary
 # =========================
-def _render_summary(text):
+def _summary(text):
     if not text:
         return "N/A"
 
     lines = text.split("\n")
-    out = []
 
-    for i, l in enumerate(lines):
-        if i == 0 and l.startswith("要約:"):
-            out.append(f"<b>{l}</b>")
-        else:
-            out.append(l)
+    # ✅ 最初の1行（要約）のみ太字
+    if lines:
+        lines[0] = f"<b>{lines[0]}</b>"
 
-    return "<br>".join(out)
+    return "<br>".join(lines)
 
 
 # =========================
-# ★変換
+# stars
 # =========================
-def _to_stars(e):
+def _stars(e):
     txt = f"{_safe(e.get('importance_label'))} {_safe(e.get('event_status'))}"
 
     if "高" in txt or "重要" in txt:
@@ -87,24 +80,39 @@ def _to_stars(e):
 
 
 # =========================
-# テーブル
+# table style
+# =========================
+TABLE_STYLE = """
+border-collapse:collapse;
+width:100%;
+table-layout:fixed;
+"""
+
+TH = "background:#eaf3ff;padding:8px;text-align:left"
+TD = "padding:8px;border-bottom:1px solid #eee"
+
+
+# =========================
+# table helpers
 # =========================
 def _table3(title, rows):
     body = ""
     for name, v, c in rows:
         body += f"""
         <tr>
-        <td>{name}</td>
-        <td style='text-align:right'>{_fmt_num(v)}</td>
-        <td style='text-align:right'>{_color(c)}</td>
+        <td style="{TD}">{name}</td>
+        <td style="{TD};text-align:right">{_fmt_num(v)}</td>
+        <td style="{TD};text-align:right">{_color(c)}</td>
         </tr>
         """
 
     return f"""
     <h3>{title}</h3>
-    <table border='1' style='border-collapse:collapse;width:100%'>
-    <tr style='background:#eaf3ff'>
-        <th>項目</th><th>値</th><th>前日比</th>
+    <table style="{TABLE_STYLE}">
+    <tr>
+        <th style="{TH}">項目</th>
+        <th style="{TH}">値</th>
+        <th style="{TH}">前日比</th>
     </tr>
     {body}
     </table>
@@ -116,16 +124,17 @@ def _table2(title, rows):
     for k, v in rows:
         body += f"""
         <tr>
-        <td>{k}</td>
-        <td style='text-align:right'>{v}</td>
+        <td style="{TD}">{k}</td>
+        <td style="{TD};text-align:right">{v}</td>
         </tr>
         """
 
     return f"""
     <h3>{title}</h3>
-    <table border='1' style='border-collapse:collapse;width:100%'>
-    <tr style='background:#eaf3ff'>
-        <th>項目</th><th>値</th>
+    <table style="{TABLE_STYLE}">
+    <tr>
+        <th style="{TH}">項目</th>
+        <th style="{TH}">値</th>
     </tr>
     {body}
     </table>
@@ -135,27 +144,28 @@ def _table2(title, rows):
 def _econ(title, events):
     body = ""
 
-    if not events:
-        body = "<tr><td>なし</td></tr>"
-    else:
-        for e in events:
-            body += f"""
-            <tr>
-            <td>{_safe(e.get('country'))}</td>
-            <td>{_safe(e.get('event_name'))}</td>
-            <td>{_safe(e.get('forecast'))}</td>
-            <td>{_safe(e.get('actual'))}</td>
-            <td>{_safe(e.get('previous'))}</td>
-            <td>{_to_stars(e)}</td>
-            </tr>
-            """
+    for e in events or []:
+        body += f"""
+        <tr>
+        <td style="{TD}">{_safe(e.get('country'))}</td>
+        <td style="{TD}">{_safe(e.get('event_name'))}</td>
+        <td style="{TD}">{_safe(e.get('forecast'))}</td>
+        <td style="{TD}">{_safe(e.get('actual'))}</td>
+        <td style="{TD}">{_safe(e.get('previous'))}</td>
+        <td style="{TD};text-align:center">{_stars(e)}</td>
+        </tr>
+        """
 
     return f"""
     <h3>📅 {title}</h3>
-    <table border='1' style='border-collapse:collapse;width:100%'>
-    <tr style='background:#eaf3ff'>
-      <th>国</th><th>指標</th><th>予想</th>
-      <th>結果</th><th>前回</th><th>重要度</th>
+    <table style="{TABLE_STYLE}">
+    <tr>
+        <th style="{TH}">国</th>
+        <th style="{TH}">指標</th>
+        <th style="{TH}">予想</th>
+        <th style="{TH}">結果</th>
+        <th style="{TH}">前回</th>
+        <th style="{TH}">重要度</th>
     </tr>
     {body}
     </table>
@@ -163,7 +173,7 @@ def _econ(title, events):
 
 
 # =========================
-# メイン
+# MAIN
 # =========================
 def build_html(
     market_rows,
@@ -183,6 +193,7 @@ def build_html(
 
     today = now_jst().strftime("%Y-%m-%d")
 
+    # ===== 指数
     major = _table3("🚀 主要指数", [
         ("S&P500", *_val("S&P500", market_rows)),
         ("NASDAQ", *_val("NASDAQ", market_rows)),
@@ -191,47 +202,110 @@ def build_html(
         ("日経平均", *_val("日経平均", market_rows)),
     ])
 
+    # ===== 金利
+    y10, y10c = _val("米10年金利", market_rows)
+    y2 = rate_extras.get("米2年債利回り")
+
+    y2_change = rate_extras.get("米2年債利回り_前日比_pct")
+    try:
+        y2c = f"{y2_change:+.2f}%"
+    except:
+        y2c = ""
+
     rate = _table3("✅ 金利", [
-        ("米10年債利回り", *_val("米10年金利", market_rows)),
-        ("米2年債利回り", rate_extras.get("米2年債利回り"), "")
+        ("米10年債利回り", y10, y10c),
+        ("米2年債利回り", y2, y2c),
     ])
 
+    # スプレッド
     try:
-        spread = float(_val("米10年金利", market_rows)[0]) - float(rate_extras.get("米2年債利回り"))
-        spread = f"{spread:.2f}"
+        spread_val = float(y10) - float(y2)
+        spread = f"{spread_val:.2f}"
+        if spread_val < 0:
+            spread = _warn(spread)
     except:
         spread = "N/A"
 
-    breadth_table = _table2("📈 市場の広がり", [
-        ("上昇銘柄比率", _fmt_pct(breadth.get("ratio"))),
+    # ===== 為替
+    fx = _table3("💱 為替", [
+        ("DXY", *_val("DXY", market_rows)),
+        ("USD/JPY", *_val("USD/JPY", market_rows)),
+        ("EUR/USD", *_val("EUR/USD", market_rows)),
+    ])
+
+    # ===== コモディティ
+    com = _table3("🛢️ コモディティ", [
+        ("WTI原油", *_val("WTI原油", market_rows)),
+        ("ゴールド", *_val("ゴールド", market_rows)),
+        ("銅", *_val("銅", market_rows)),
+    ])
+
+    # ===== 仮想通貨
+    crypto = _table3("🪙 仮想通貨", [
+        ("BTC", *_val("BTC (USD)", market_rows)),
+        ("ETH", *_val("ETH (USD)", market_rows)),
+        ("XRP", *_val("XRP (USD)", market_rows)),
+        ("SOL", *_val("SOL (USD)", market_rows)),
+    ])
+
+    # ===== Breadth
+    r = breadth.get("ratio")
+    r_txt = _fmt_pct(r)
+
+    if r is not None and r <= 30:
+        r_txt = _warn(r_txt)
+
+    breadth_tbl = _table2("📈 市場の広がり", [
+        ("上昇銘柄比率", r_txt),
         ("状態", _safe(breadth.get("state")))
     ])
 
-    sector = _table2("セクター", [
-        (r["label"], _color(r["change_text"])) for r in sector_rows
+    # ===== セクター
+    sector_tbl = _table2("✅ セクター", [
+        (r["label"], _color(r["change_text"]))
+        for r in sector_rows
     ])
 
+    # ===== 経済指標
     econ_y = _econ("経済指標（昨日）", macro_payload.get("yesterday_events"))
     econ_t = _econ("経済指標（本日）", macro_payload.get("today_events"))
 
-    summary = f"<h3>🧠 まとめ</h3><div>{_render_summary(ai_summary)}</div>"
+    # ===== まとめ
+    summary = f"""
+    <h3>🧠 まとめ</h3>
+    <div>{_summary(ai_summary)}</div>
+    """
 
+    # ===== スコア（アイコン追加）
+    score_block = f"""
+    <h3>📊 スコア</h3>
+    {score} ({regime})<br>
+    {signal}
+    """
+
+    # ===== HTML
     return f"""
     <html>
-    <body style='font-family:Arial'>
+    <body style="font-family:Arial;max-width:960px;margin:auto">
+
     <h2>Daily Market Report ({today})</h2>
 
     {major}
     {rate}
     <p><b>10Y-2Y:</b> {spread}</p>
-    {breadth_table}
-    {sector}
+
+    {fx}
+    {com}
+    {crypto}
+
+    {breadth_tbl}
+    {sector_tbl}
+
     {econ_y}
     {econ_t}
-    {summary}
 
-    <h3>スコア</h3>
-    {score} ({regime})<br>{signal}
+    {summary}
+    {score_block}
 
     </body>
     </html>
