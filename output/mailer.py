@@ -4,7 +4,6 @@ from email.mime.text import MIMEText
 
 
 def send_mail(subject, html):
-
     msg = MIMEText(html, "html")
     msg["Subject"] = subject
     msg["From"] = os.getenv("SMTP_USER")
