@@ -1,7 +1,8 @@
 from data.market_data import get_close_pair
 
 
-def calc or prev is None or prev == 0:def calc_change_pct(curr, prev):
+def calc_change_pct(curr, prev):
+    if curr is None or prev is None or prev == 0:
         return None
     return round((curr - prev) / prev * 100, 2)
 
@@ -14,9 +15,11 @@ def format_change(change):
 
 
 def build_rows(df, symbol_map):
+
     rows = []
 
     for label, symbol in symbol_map.items():
+
         curr, prev = get_close_pair(df, symbol)
         change = calc_change_pct(curr, prev)
 
@@ -36,7 +39,9 @@ def build_rows(df, symbol_map):
 
 
 def summarize_sector_attention(sector_rows, top_n=3):
+
     valid = [r for r in sector_rows if r.get("change_pct") is not None]
+
     if not valid:
         return {"leaders": [], "laggards": []}
 
