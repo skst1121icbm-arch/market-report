@@ -361,21 +361,24 @@ def build_html(
         y2_change_text = "N/A"
 
     # ✅ NEW：実質金利
-    real_rate = rate_extras.get("実質金利")
-    real_rate_change = rate_extras.get("実質金利_前日比")
+    real_rate_raw = rate_extras.get("実質金利")
+    real_rate = _safe(real_rate_raw)
+    
+    real_rate_change_raw = rate_extras.get("実質金利_前日比")
     try:
-        real_rate_change_text = f"{real_rate_change:+.2f}%"
+        real_rate_change_text = f"{real_rate_change_raw:+.2f}%"
     except Exception:
         real_rate_change_text = "N/A"
 
     # ✅ NEW：利下げ折込回数
-    cut_expect = rate_extras.get("利下げ折込回数")
-    cut_expect_change = rate_extras.get("利下げ折込回数_変化")
+    cut_expect_raw = rate_extras.get("利下げ折込回数")
+    cut_expect = _safe(cut_expect_raw)
+    
+    cut_expect_change_raw = rate_extras.get("利下げ折込回数_変化")
     try:
-        cut_expect_change_text = f"{cut_expect_change:+.2f}"
+        cut_expect_change_text = f"{cut_expect_change_raw:+.2f}"
     except Exception:
         cut_expect_change_text = "N/A"
-    
     
     # ✅ 最終テーブル
     rate_rows = [
