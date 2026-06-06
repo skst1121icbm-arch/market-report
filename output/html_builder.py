@@ -3,20 +3,7 @@ import re
 from html import escape
 
 
-# =========================
-# BASIC HELPERS
-# =========================
-def _fmt_num(v):
-    if v in [None, "", "None"]:
-        return "N/A"
-    try:
-        return f"{float(v):.2f}"
-    except Exception:
-        return escape(str(v))
-
-
-def _fmt_pct(v):
-    if v in [None, "", "None"]:
+    if v in [None, "", "None"]:# =========================
         return "N/A"
     try:
         return f"{float(v):.2f}%"
@@ -62,6 +49,20 @@ def _warn(text):
     return f'<span style="color:#c62828; font-weight:700;">{escape(str(text))}</span>'
 
 
+def _state_badge(text):
+    s = _safe(text)
+    if s in ["N/A", ""]:
+        return "N/A"
+
+    if any(k in s for k in ["強気", "改善", "上昇", "良好", "リスクオン"]):
+        return f'<span style="color:#0a8f2a; font-weight:700;">{escape(s)}</span>'
+
+    if any(k in s for k in ["弱気", "悪化", "下落", "警戒", "リスクオフ"]):
+        return f'<span style="color:#c62828; font-weight:700;">{escape(s)}</span>'
+
+    return f'<span style="color:#666; font-weight:600;">{escape(s)}</span>'
+
+
 # =========================
 # SUMMARY
 # =========================
@@ -97,19 +98,138 @@ def _clean_summary_text(text: str) -> str:
 
 
 # =========================
-# IMPORTANCE
+# IMPORTANCE COLOR
 # =========================
-def _stars(e):
-    txt = f"{_safe(e.get('importance_label'))} {_safe(e.get('event_status'))}"
-    if "高" in txt or "重要" in txt:
-        return "★★★"
-    elif "中" in txt:
-        return "★★"
-    return "★"
+def _importance_to_stars(value):
+    s = _safe(value)
+
+    # 既に★表現ならそのまま
+    if "★★★" in s:
+        stars = "★★★"
+    elif "★★" in s:
+        stars = "★★"
+    elif "★" in s:
+        stars = "★"
+    else:
+        # 文字から推定
+        if "高" in s or "重要" in s:
+            stars = "★★★"
+        elif "中" in s:
+            stars = "★★"
+        elif "低" in s:
+            stars = "★"
+        else:
+            stars = "★"
+
+    if stars == "★★★":
+        return '<span style="color:#c62828; font-weight:700;">★★★</span>'
+    elif stars == "★★":
+        return '<span style="color:#ef6c00; font-weight:700;">★★</span>'
+    return '<span style="color:#757575; font-weight:700;">★</span>'
 
 
 # =========================
-# INLINE STYLE HELPERS
+# SURPRISE JUDGMENT
+# =========================
+def _extract_num_and_unit(text):
+    """
+    '172K' -> (172.0, 'K')
+    '4.3%' -> (4.3, '%')
+    '31500億円' -> (31500.0, '億円')
+    '402万件' -> (402.0, '万件')
+    """
+    s = _safe(text)
+    if s in ["N/A", "", "---", "-"]:
+        return None, ""
+
+    s = s.replace(",", "").replace(" ", "")
+
+    m = re.search(r"([-+]?\d+(?:\.\d+)?)", s)
+    if not m:
+        return None, ""
+
+    num = float(m.group(1))
+    unit = s[m.end():]  # 数字以降をざっくり単位扱い
+    return num, unit
+
+
+def _same_or_compatible_unit(unit_a, unit_b):
+    """
+    単位が完全一致 or どちらか空なら比較可能
+    """
+    if not unit_a or not unit_b:
+        return True
+    return unit_a == unit_b
+
+
+def _surprise_direction_from_name(event_name):
+    """
+    指標ごとの単純ルール
+    - 上振れがポジティブ: NFP / GDP / PMI / 売上 / 生産 / 受注 / 雇用者数
+    - 下振れがポジティブ: 失業率 / 新規失業保険申請件数 / 申請指数
+    - それ以外: 方向だけ出す（上振れ / 下振れ）
+    """
+    name = _safe(event_name)
+
+    higher_is_better_keywords = [
+        "非農業部門雇用者数", "NFP", "GDP", "国内総生産", "PMI",
+        "売上", "生産", "受注", "雇用者数", "景況感", "雇用統計",
+        "実質GDP", "中古住宅販売件数", "消費者信頼感"
+    ]
+    lower_is_better_keywords = [
+        "失業率", "新規失業保険", "失業保険申請", "コア失業率"
+    ]
+
+    if any(k in name for k in higher_is_better_keywords):
+        return "higher_is_better"
+    if any(k in name for k in lower_is_better_keywords):
+        return "lower_is_better"
+    return "neutral"
+
+
+def _surprise_badge(event_name, actual, forecast):
+    """
+    予想 vs 結果を比較して
+    - ポジティブ上振れ
+    - ネガティブ下振れ
+    - 上振れ / 下振れ
+    - 予想通り
+    を返す
+    """
+    a_num, a_unit = _extract_num_and_unit(actual)
+    f_num, f_unit = _extract_num_and_unit(forecast)
+
+    if a_num is None or f_num is None:
+        return '<span style="color:#9e9e9e;">---</span>'
+
+    if not _same_or_compatible_unit(a_unit, f_unit):
+        return '<span style="color:#9e9e9e;">---</span>'
+
+    # ほぼ同じ値は予想通り
+    tolerance = max(abs(f_num) * 0.001, 0.0001)
+    if abs(a_num - f_num) <= tolerance:
+        return '<span style="color:#616161; font-weight:600;">予想通り</span>'
+
+    direction_rule = _surprise_direction_from_name(event_name)
+
+    if direction_rule == "higher_is_better":
+        if a_num > f_num:
+            return '<span style="color:#0a8f2a; font-weight:700;">ポジティブ上振れ</span>'
+        return '<span style="color:#c62828; font-weight:700;">ネガティブ下振れ</span>'
+
+    if direction_rule == "lower_is_better":
+        if a_num < f_num:
+            return '<span style="color:#0a8f2a; font-weight:700;">ポジティブ下振れ</span>'
+        return '<span style="color:#c62828; font-weight:700;">ネガティブ上振れ</span>'
+
+    # 中立ルール
+    if a_num > f_num:
+        return '<span style="color:#1565c0; font-weight:700;">上振れ</span>'
+    return '<span style="color:#6a1b9a; font-weight:700;">下振れ</span>'
+
+
+# =========================
+# INLINE STYLE HELPERS（Outlook対応）
 # =========================
 def _table_open():
     return """
@@ -205,36 +325,47 @@ def _table_2col(title_icon, title, rows, col1="項目", col2="値"):
 
 def _table_econ(title_icon, title, events):
     """
-    10 / 35 / 15 / 15 / 15 / 10 固定
-    国 / 指標 / 予想 / 結果 / 前回 / 重要度
+    7列固定
+    国 / 指標 / 予想 / 結果 / 前回 / 重要度 / サプライズ
+    幅: 8 / 32 / 13 / 13 / 13 / 9 / 12
     """
     body = []
 
     if not events:
         body.append("<tr>")
-        body.append(_td("なし", 100, "center", colspan=6))
+        body.append(_td("なし", 100, "center", colspan=7))
         body.append("</tr>")
     else:
         for e in events:
+            country = _safe(e.get("country"))
+            event_name = _safe(e.get("event_name"))
+            forecast = _safe(e.get("forecast"))
+            actual = _safe(e.get("actual"))
+            previous = _safe(e.get("previous"))
+            importance = _importance_to_stars(e.get("importance_label"))
+            surprise = _surprise_badge(event_name, actual, forecast)
+
             body.append("<tr>")
-            body.append(_td(escape(_safe(e.get("country"))), 10, "center"))
-            body.append(_td(escape(_safe(e.get("event_name"))), 35, "center"))
-            body.append(_td(escape(_safe(e.get("forecast"))), 15, "center"))
-            body.append(_td(escape(_safe(e.get("actual"))), 15, "center"))
-            body.append(_td(escape(_safe(e.get("previous"))), 15, "center"))
-            body.append(_td(_stars(e), 10, "center"))
+            body.append(_td(escape(country), 8, "center"))
+            body.append(_td(escape(event_name), 32, "center"))
+            body.append(_td(escape(forecast), 13, "center"))
+            body.append(_td(escape(actual), 13, "center"))
+            body.append(_td(escape(previous), 13, "center"))
+            body.append(_td(importance, 9, "center"))
+            body.append(_td(surprise, 12, "center"))
             body.append("</tr>")
 
     return (
         _section_title(title_icon, title)
         + _table_open()
         + "<tr>"
-        + _th("国", 10)
-        + _th("指標", 35)
-        + _th("予想", 15)
-        + _th("結果", 15)
-        + _th("前回", 15)
-        + _th("重要度", 10)
+        + _th("国", 8)
+        + _th("指標", 32)
+        + _th("予想", 13)
+        + _th("結果", 13)
+        + _th("前回", 13)
+        + _th("重要度", 9)
+        + _th("サプライズ", 12)
         + "</tr>"
         + "".join(body)
         + _table_close()
@@ -266,7 +397,6 @@ def build_html(
     for label in ["S&P500", "NASDAQ", "NYダウ", "Russell2000", "日経平均"]:
         v, c = _val(label, market_rows)
         major_rows.append((label, v, c))
-
     major_table = _table_3col("🚀", "主要指数", major_rows)
 
     # ===== 金利 =====
@@ -304,7 +434,6 @@ def build_html(
     for label in ["DXY", "USD/JPY", "EUR/USD"]:
         v, c = _val(label, market_rows)
         fx_rows.append((label, v, c))
-
     fx_table = _table_3col("💱", "為替", fx_rows)
 
     # ===== コモディティ =====
@@ -312,7 +441,6 @@ def build_html(
     for label in ["WTI原油", "ゴールド", "銅"]:
         v, c = _val(label, market_rows)
         commodity_rows.append((label, v, c))
-
     commodity_table = _table_3col("🛢️", "コモディティ", commodity_rows)
 
     # ===== 仮想通貨 =====
@@ -321,16 +449,14 @@ def build_html(
         v, c = _val(label, market_rows)
         display_name = label.replace(" (USD)", "")
         crypto_rows.append((display_name, v, c))
-
     crypto_table = _table_3col("🪙", "仮想通貨", crypto_rows)
 
-    # ===== ETFフロー =====
+    # ===== ETF =====
     etf_rows = [
         ("SPY", _color_change(_safe(etf_flows.get("SPY")))),
         ("QQQ", _color_change(_safe(etf_flows.get("QQQ")))),
         ("IWM", _color_change(_safe(etf_flows.get("IWM")))),
     ]
-
     etf_table = _table_2col("💰", "ETFフロー", etf_rows, col1="項目", col2="前日比")
 
     etf_comment = f'''
@@ -343,7 +469,6 @@ def build_html(
     options_rows = [
         ("Put/Call", _fmt_num(options_data.get("put_call"))),
     ]
-
     options_table = _table_2col("🎯", "オプション", options_rows, col1="項目", col2="値")
 
     options_comment = f'''
@@ -352,7 +477,7 @@ def build_html(
     </div>
     '''
 
-    # ===== 市場の広がり（状態はコメントへ移動）=====
+    # ===== 市場の広がり =====
     ratio = breadth.get("ratio")
     ratio_text = _fmt_pct(ratio)
     if ratio is not None and ratio <= 30:
@@ -361,12 +486,11 @@ def build_html(
     breadth_rows = [
         ("上昇銘柄比率", ratio_text),
     ]
-
     breadth_table = _table_2col("📈", "市場の広がり", breadth_rows, col1="項目", col2="値")
 
     breadth_comment = f'''
     <div style="margin:8px 0 18px 0;">
-      <b>状態:</b> {escape(_safe(breadth.get("state")))}
+      <b>状態:</b> {_state_badge(breadth.get("state"))}
     </div>
     '''
 
@@ -376,12 +500,12 @@ def build_html(
         sector_rows_for_table.append(
             (r["label"], _color_change(_safe(r.get("change_text"))))
         )
-
     sector_table = _table_2col("✅", "セクター", sector_rows_for_table, col1="セクター", col2="前日比")
 
-    # ===== 経済指標 =====
+    # ===== 経済指標（昨日 / 本日 / 今週） =====
     econ_yesterday = _table_econ("📅", "経済指標（昨日）", macro_payload.get("yesterday_events", []))
     econ_today = _table_econ("📅", "経済指標（本日）", macro_payload.get("today_events", []))
+    econ_week = _table_econ("🗓️", "経済指標（今週）", macro_payload.get("week_events", []))
 
     # ===== まとめ =====
     summary_section = f'''
@@ -424,6 +548,7 @@ def build_html(
 
       {econ_yesterday}
       {econ_today}
+      {econ_week}
 
       {summary_section}
       {score_section}
@@ -431,3 +556,16 @@ def build_html(
     </body>
     </html>
     """
+
+# BASIC HELPERS
+# =========================
+def _fmt_num(v):
+    if v in [None, "", "None"]:
+        return "N/A"
+    try:
+        return f"{float(v):.2f}"
+    except Exception:
+        return escape(str(v))
+
+
+def _fmt_pct(v):
