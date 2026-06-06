@@ -16,7 +16,7 @@ def _is_important(sentence: str):
         "強気", "弱気", "下落", "上昇",
         "リスクオフ", "リスクオン",
         "資金流出", "資金流入",
-        "VIX"
+        "VIX", "警戒", "逆転"
     ]
     return any(k in sentence for k in keywords)
 
@@ -30,7 +30,6 @@ def _format_text(text: str):
     if not sentences:
         return f"要約: {text}"
 
-    # ✅ 要約1行
     first = sentences[0]
     summary = f"要約: {first}"
 
@@ -42,6 +41,22 @@ def _format_text(text: str):
         out.append(s)
 
     return "\n".join(out)
+
+
+def _events_to_text(events):
+    lines = []
+    for e in events or []:
+        name = e.get("event_name")
+        country = e.get("country")
+        forecast = e.get("forecast")
+        actual = e.get("actual")
+        previous = e.get("previous")
+        status = e.get("event_status")
+
+        line = f"{country} {name} 予想={forecast} 結果={actual} 前回={previous} 区分={status}"
+        lines.append(line)
+
+    return "\n".join(lines) if lines else "なし"
 
 
 def generate_ai_summary(
@@ -80,15 +95,24 @@ def generate_ai_summary(
 市場データをもとに日本語で簡潔に説明してください。
 
 【条件】
-・250〜400文字
+・250〜500文字
 ・最初の一文で全体像
 ・スコアという単語は使わない
+・最後に「戦略: 売り」または「戦略: 待機」のどちらかを1行で書く
+・Breadth、ETF、Options、金利逆転、経済指標を反映する
+・昨日の経済指標結果と、本日の経済指標（結果または予定）を分けて認識する
 
 【市場】
 {chr(10).join(market_lines)}
 
 【セクター】
 {chr(10).join(sector_lines)}
+
+【昨日の経済指標】
+{_events_to_text(recent_events)}
+
+【本日の経済指標】
+{_events_to_text(upcoming_events)}
 
 【Breadth】
 {breadth}
@@ -98,6 +122,12 @@ def generate_ai_summary(
 
 【Options】
 {options_data}
+
+【シグナル】
+{signal}
+
+【補足理由】
+{" / ".join(reasons) if reasons else "なし"}
 """
 
     try:
@@ -107,7 +137,6 @@ def generate_ai_summary(
         )
 
         raw = res.choices[0].message.content
-
         return _format_text(raw)
 
     except Exception as e:
