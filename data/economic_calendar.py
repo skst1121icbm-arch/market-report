@@ -99,17 +99,18 @@ def fetch_minkabu_economic_events():
         events = _parse_minkabu_calendar(html)
         return events
     except Exception as e:
-        print("[WARN] fallback:", e)
+        print("[WARN] fetch failed:", e)
         return []
 
 
 # =========================
-# メール用分割（完成版）
+# メール表示用分割（最終版）
 # =========================
 def split_events_for_mail(events, now_jst):
     today = now_jst.date()
     yesterday = today - timedelta(days=1)
 
+    # 今週（月曜〜日曜）
     start_of_week = today - timedelta(days=today.weekday())
     end_of_week = start_of_week + timedelta(days=6)
 
@@ -127,22 +128,32 @@ def split_events_for_mail(events, now_jst):
         except Exception:
             continue
 
+        # ===== 昨日 =====
         if dt == yesterday:
             yesterday_events.append(e)
 
+        # ===== 本日 =====
         elif dt == today:
             today_events.append(e)
 
-        # ✅ 今週（未来＋重要のみ）
+        # ===== 今週（重要・未来のみ）=====
         if (
-            today < dt <= end_of_week
-            and e.get("event_status") != "結果"
+            today < dt <= end_of_week                      # 未来のみ
+            and e.get("event_status") != "結果"             # 未発表のみ
             and (
-                "高" in str(e.get("importance_label"))
-                or "中" in str(e.get("importance_label"))
+                "高" in str(e.get("importance_label"))     # ★★★
+                or "中" in str(e.get("importance_label"))  # ★★
             )
         ):
             week_events.append(e)
+
+    # ✅ 時系列ソート（重要）
+    def sort_key(e):
+        date = e.get("event_date_jst", "")
+        time = e.get("event_time_jst", "99:99")
+        return f"{date} {time}"
+
+    week_events = sorted(week_events, key=sort_key)
 
     return {
         "yesterday_events": yesterday_events,
