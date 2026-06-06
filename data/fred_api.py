@@ -36,7 +36,6 @@ def fetch_latest(series_id):
             v = o.get("value")
             if v not in [None, ".", "NaN", ""]:
                 return float(v)
-
     except Exception:
         return None
 
