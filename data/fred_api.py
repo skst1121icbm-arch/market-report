@@ -116,12 +116,12 @@ def fetch_us_rate_extras():
         extras["実質金利(10Y)"] = None
         extras["実質金利(10Y)_前回"] = None
         extras["実質金利_前日比"] = None
-
+ 
+    from data.fedwatch_scraper import fetch_fedwatch_rate_cuts
+    
     # =========================
     # 3) 利下げ折込回数
-    # =========================    
-    from data.fedwatch_scraper import fetch_fedwatch_rate_cuts
-
+    # =========================   
     cuts, cuts_change = fetch_fedwatch_rate_cuts()
     
     extras["利下げ折込回数"] = cuts
