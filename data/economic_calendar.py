@@ -1,76 +1,10 @@
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-
-JST = ZoneInfo("Asia/Tokyo")
-
-# =========================
-# NFPなど補正ルール
-# =========================
-KNOWN_EVENT_FIXES = [
-    {
-        "date": "2026-06-05",
-        "country": "US",
-        "keywords": ["非農業部門雇用者数", "NFP"],
-        "forecast": "85K",
-        "actual": "172K",
-        "previous": "179K",
-        "importance_label": "高",
-        "event_status": "結果",
-    },
-    {
-        "date": "2026-06-05",
-        "country": "US",
-        "keywords": ["失業率"],
-        "forecast": "4.3%",
-        "actual": "4.3%",
-        "previous": "4.3%",
-        "importance_label": "高",
-        "event_status": "結果",
-    },
-]
-
-
-# =========================
-# UTIL
-# =========================
-def _safe(v):
-    if v in [None, "", "None"]:
-        return ""
-    return str(v).strip()
-
-
-def _normalize_date(v):
-    if v is None:
-        return ""
-
-    # datetime対応
-    try:
-        if hasattr(v, "strftime"):
-            return v.strftime("%Y-%m-%d")
-    except:
-        pass
-
-    s = str(v).replace("/", "-").strip()
-    return s[:10] if len(s) >= 10 else s
-
-
-def _match(name, keywords):
-    name = _safe(name)
-    return any(k in name for k in keywords)
-
-
-# =========================
-# FIX
-# =========================
-def apply_fixes(events):
-    result = []
-
-    for e in events or []:
+from zoneinfo import Zone:from zoneinfo import ZoneInfo
         item = dict(e)
 
         date = _normalize_date(item.get("event_date_jst"))
-        country = _safe(item.get("country"))
-        name = _safe(item.get("event_name"))
+        country = item.get("country", "")
+        name = item.get("event_name", "")
 
         for rule in KNOWN_EVENT_FIXES:
             if (
@@ -85,7 +19,6 @@ def apply_fixes(events):
                     "importance_label": rule["importance_label"],
                     "event_status": rule["event_status"],
                 })
-                break
 
         result.append(item)
 
@@ -93,20 +26,12 @@ def apply_fixes(events):
 
 
 # =========================
-# メイン取得
+# メイン
 # =========================
 def fetch_minkabu_economic_events():
-    """
-    ✅ 重要：
-    ここに既存のスクレイピング処理を入れる
-    """
+    raw_events = scrape_minkabu()
 
-    # 🔽 例（あなたの既存コードに置き換える）
-    raw_events = []
-
-    # ✅ データが無いときはそのまま返す
-    if not raw_events:
-        return []
+    print("DEBUG: events count =", len(raw_events))
 
     return apply_fixes(raw_events)
 
@@ -118,36 +43,120 @@ def split_events_for_mail(events, now_jst):
     today = now_jst.date()
     yesterday = today - timedelta(days=1)
 
-    yesterday_events = []
-    today_events = []
+    y_events = []
+    t_events = []
 
-    for e in events or []:
+    for e in events:
         d = e.get("event_date_jst")
 
-        date_obj = None
+        try:
+            dt = datetime.strptime(d, "%Y-%m-%d").date()
+        except:
+            continue
 
-        # datetime型対応
-        if hasattr(d, "date"):
-            try:
-                date_obj = d.date()
-            except:
-                pass
-
-        # string型対応
-        if date_obj is None:
-            try:
-                date_obj = datetime.strptime(
-                    _normalize_date(d), "%Y-%m-%d"
-                ).date()
-            except:
-                pass
-
-        if date_obj == yesterday:
-            yesterday_events.append(e)
-        elif date_obj == today:
-            today_events.append(e)
+        if dt == yesterday:
+            y_events.append(e)
+        elif dt == today:
+            t_events.append(e)
 
     return {
-        "yesterday_events": yesterday_events,
-        "today_events": today_events,
+        "yesterday_events": y_events,
+        "today_events": t_events,
     }
+``
+import requests
+from bs4 import BeautifulSoup
+
+JST = ZoneInfo("Asia/Tokyo")
+
+
+# =========================
+# NFP補正
+# =========================
+KNOWN_EVENT_FIXES = [
+    {
+        "date": "2026-06-05",
+        "country": "US",
+        "keywords": ["非農業部門雇用者数", "NFP"],
+        "forecast": "85K",
+        "actual": "172K",
+        "previous": "179K",
+        "importance_label": "高",
+        "event_status": "結果",
+    }
+]
+
+
+# =========================
+# 共通関数
+# =========================
+def _safe(v):
+    if not v:
+        return ""
+    return str(v).strip()
+
+
+def _normalize_date(v):
+    if hasattr(v, "strftime"):
+        return v.strftime("%Y-%m-%d")
+
+    s = str(v).replace("/", "-")
+    return s[:10]
+
+
+def _match(name, keywords):
+    return any(k in name for k in keywords)
+
+
+# =========================
+# Minkabu取得
+# =========================
+def scrape_minkabu():
+    url = "https://minkabu.jp/indicators"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    res = requests.get(url, headers=headers)
+    res.raise_for_status()
+
+    soup = BeautifulSoup(res.text, "html.parser")
+
+    rows = soup.select("table tr")
+
+    events = []
+
+    current_date = datetime.now(JST).strftime("%Y-%m-%d")
+
+    for r in rows:
+        cols = r.find_all("td")
+        if len(cols) < 6:
+            continue
+
+        try:
+            event = {
+                "event_date_jst": current_date,
+                "country": _safe(cols[0].text),
+                "event_name": _safe(cols[1].text),
+                "forecast": _safe(cols[2].text),
+                "actual": _safe(cols[3].text),
+                "previous": _safe(cols[4].text),
+                "importance_label": _safe(cols[5].text),
+                "event_status": "結果",
+            }
+
+            events.append(event)
+
+        except Exception:
+            continue
+
+    return events
+
+
+# =========================
+# 補正
+# =========================
+def apply_fixes(events):
+    result = []
+
