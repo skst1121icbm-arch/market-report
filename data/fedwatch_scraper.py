@@ -1,9 +1,8 @@
 import re
-import json
-import math
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
+
 
 FEDWATCH_URL = "https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html"
 
@@ -21,7 +20,7 @@ def _safe_float(v):
     if v is None:
         return None
     s = str(v).strip().replace("%", "").replace(",", "")
-    if s in ["", "None", "nan", "-", "—"]:
+    if s in ["", "None", "nan", "-", "—", "."]:
         return None
     try:
         return float(s)
@@ -38,20 +37,24 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 def _range_midpoint(range_text: str):
     """
     例:
-      "350-375" -> 3.625
+      "350-375"   -> 3.625
       "3.50-3.75" -> 3.625
-      "425-450" -> 4.375
+      "425-450"   -> 4.375
     """
     if not range_text:
         return None
-    s = str(range_text).strip().replace(" ", "")
+
+    s = str(range_text).strip()
+    s = s.replace(" ", "")
+
     m = re.match(r"^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$", s)
     if not m:
         return None
 
-    a, b = float(m.group(1)), float(m.group(2))
+    a = float(m.group(1))
+    b = float(m.group(2))
 
-    # 350-375 のようなbps表記っぽければ % に直す
+    # 350-375 のような表記なら % に戻す
     if a > 50 and b > 50:
         a = a / 100.0
         b = b / 100.0
@@ -61,18 +64,17 @@ def _range_midpoint(range_text: str):
 
 def _expected_midpoint_from_table(df: pd.DataFrame, prob_col: str):
     """
-    表の各ターゲットレンジ × 確率から期待ミッドポイントを計算する
+    Target Rate Range × Probability から期待ミッドポイントを計算
     """
     df = _normalize_columns(df)
 
-    # ターゲットレンジ列候補
     range_col = None
     for c in df.columns:
         cl = c.lower()
         if "target" in cl and "rate" in cl:
             range_col = c
             break
-        if "rate" in cl and ("range" in cl or "target" in cl):
+        if "range" in cl:
             range_col = c
             break
 
@@ -95,69 +97,76 @@ def _expected_midpoint_from_table(df: pd.DataFrame, prob_col: str):
     if total_prob <= 0:
         return None
 
-    # %表記の確率なら 100 で割らなくても比率計算では相殺される
     return weighted / total_prob
 
 
 def _find_probability_table_from_html(html: str):
     """
-    公開ページのHTMLから、FedWatchの確率表っぽいテーブルを探す。
-    heuristic:
-      - 'Target Rate' 系の列
-      - Current / 1 Day Ago / 1 Week Ago / 1 Month Ago 系の列
+    公開ページ内の確率表らしき table を拾う。
+    pandas.read_html ベースの best-effort 実装。
     """
     try:
         tables = pd.read_html(html)
-    except Exception:
+    except Exception as e:
+        print("[WARN] pd.read_html failed:", e)
         return None
 
-    for df in tables:
+    print("DEBUG FedWatch tables:", len(tables))
+
+    for idx, df in enumerate(tables):
         df = _normalize_columns(df)
-        cols = [c.lower() for c in df.columns]
+        cols = [str(c) for c in df.columns]
 
-        has_target = any(("target" in c and "rate" in c) for c in cols) or any("range" in c for c in cols)
-        has_prob = any("current" in c for c in cols) or any("1 day" in c for c in cols) or any("one day" in c for c in cols)
+        print(f"DEBUG table[{idx}] cols =", cols)
 
-        if has_target and has_prob:
+        # 緩めに判定
+        has_target = any("target" in str(c).lower() for c in cols) or any("range" in str(c).lower() for c in cols)
+        if has_target:
             return df
 
     return None
 
 
-def _extract_embedded_json_tables(html: str):
+def _detect_probability_columns(df: pd.DataFrame):
     """
-    ページ内埋め込みJSONらしき<script>から表データらしきものを探す補助。
-    ※ ページ構造変更に強くするための保険。見つからなければ None。
+    Current / 1 day ago 列をゆるく判定する
     """
-    soup = BeautifulSoup(html, "html.parser")
-    scripts = soup.find_all("script")
+    cols = [str(c).strip() for c in df.columns]
 
-    # 完全汎用のため、JSONっぽい script をざっくり探索
-    candidate_texts = []
-    for sc in scripts:
-        txt = sc.string or sc.get_text() or ""
-        txt = txt.strip()
-        if not txt:
-            continue
-        if "Current" in txt and "Target" in txt and ("FedWatch" in txt or "probab" in txt.lower()):
-            candidate_texts.append(txt)
+    current_col = None
+    day_ago_col = None
 
-    # ここでは無理に構造断定せず、今回は fallback 用に何もしない
-    return None
+    for c in cols:
+        cl = c.lower()
+
+        # Current
+        if current_col is None and "current" in cl:
+            current_col = c
+
+        # 1 day ago の複数表記に対応
+        if day_ago_col is None:
+            if (
+                "1 day" in cl
+                or "one day" in cl
+                or "day ago" in cl
+                or "previous day" in cl
+                or "1d" in cl
+            ):
+                day_ago_col = c
+
+    return current_col, day_ago_col
 
 
 def fetch_fedwatch_rate_cuts_scrape(current_target_midpoint=3.625):
     """
-    非公式スクレイピング案:
-      - 公開ページから確率表を探す
-      - Current / 1 Day Ago の期待ミッドポイントを計算
-      - 現在のFFターゲット・ミッドポイントとの差分を25bp刻みで
-        「利下げ折込回数」に換算する
+    FedWatch公開ページから利下げ折込回数を推定する。
 
     戻り値:
-      (cuts_current, cuts_change)
-        - cuts_current: 現在時点の想定利下げ回数
-        - cuts_change: 前日比変化
+        (cuts_current, cuts_change)
+
+    例:
+        cuts_current = 2.25
+        cuts_change  = -0.25
     """
     try:
         res = requests.get(FEDWATCH_URL, headers=HEADERS, timeout=30)
@@ -167,26 +176,18 @@ def fetch_fedwatch_rate_cuts_scrape(current_target_midpoint=3.625):
         print("[WARN] FedWatch page fetch failed:", e)
         return None, None
 
+    print("DEBUG FedWatch HTML length:", len(html))
+
     df = _find_probability_table_from_html(html)
+    print("DEBUG table found:", df is not None)
 
     if df is None:
-        # 埋め込みJSON fallback（今回は保険のみ）
-        _extract_embedded_json_tables(html)
-        print("[WARN] FedWatch probability table not found in public HTML")
+        print("[WARN] FedWatch probability table not found")
         return None, None
 
-    cols = [str(c).strip() for c in df.columns]
-
-    # Current列候補
-    current_col = None
-    day_ago_col = None
-
-    for c in cols:
-        cl = c.lower()
-        if current_col is None and "current" in cl:
-            current_col = c
-        if day_ago_col is None and ("1 day" in cl or "one day" in cl):
-            day_ago_col = c
+    current_col, day_ago_col = _detect_probability_columns(df)
+    print("DEBUG current_col:", current_col)
+    print("DEBUG day_ago_col:", day_ago_col)
 
     if current_col is None:
         print("[WARN] FedWatch current probability column not found")
@@ -195,25 +196,28 @@ def fetch_fedwatch_rate_cuts_scrape(current_target_midpoint=3.625):
     implied_current = _expected_midpoint_from_table(df, current_col)
     implied_prev = _expected_midpoint_from_table(df, day_ago_col) if day_ago_col else None
 
+    print("DEBUG implied_current:", implied_current)
+    print("DEBUG implied_prev:", implied_prev)
+
     if implied_current is None:
-        print("[WARN] FedWatch implied current midpoint could not be computed")
+        print("[WARN] FedWatch implied current midpoint not computed")
         return None, None
 
-    # 25bp単位で換算
-    # 現在midpointより低ければ「利下げ折込」
+    # 25bpごとの利下げ回数換算
     cuts_current = round((current_target_midpoint - implied_current) / 0.25, 2)
 
-    # マイナス（利上げ織り込み）は 0 未満になり得るので、そのまま返す
-    cuts_change = None
     if implied_prev is not None:
         prev_cuts = round((current_target_midpoint - implied_prev) / 0.25, 2)
         cuts_change = round(cuts_current - prev_cuts, 2)
+    else:
+        # 前日が拾えないときは N/Aにせず 0.0 扱いにしたいならここを変える
+        cuts_change = None
 
     return cuts_current, cuts_change
 
 
 def fetch_fedwatch_rate_cuts():
     """
-    将来差し替えやすいラッパー
+    将来 API 版へ差し替えやすいラッパー
     """
     return fetch_fedwatch_rate_cuts_scrape(current_target_midpoint=3.625)
