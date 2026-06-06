@@ -1,4 +1,5 @@
-from datetime import datetimefrom datetime JST
+from datetime import datetime
+from config.settings import JST
 
 
 def now_jst():
