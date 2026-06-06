@@ -1,4 +1,7 @@
-from config.settings import MARKET_SYMBOLS, SECTOR_ETFS, LATEST_HTML_FILEfrom config.settings import MARKET import fetch_minkabu_economic_events, split_events_for_mail
+from config.settings import MARKET_SYMBOLS, SECTOR_ETFS, LATEST_HTML_FILE
+
+from data.market_data import download_ohlc
+from data.economic_calendar import fetch_minkabu_economic_events, split_events_for_mail
 from data.fred_api import fetch_us_rate_extras
 from data.market_internals import (
     fetch_market_breadth,
@@ -19,42 +22,53 @@ from utils.datetime_utils import now_jst
 
 
 def run():
+
     print("===== START MARKET AI =====")
 
     now = now_jst()
 
+    # =========================
     # ① 市場データ
+    # =========================
     market_df = download_ohlc(list(MARKET_SYMBOLS.values()))
     sector_df = download_ohlc(list(SECTOR_ETFS.values()))
 
     market_rows = build_rows(market_df, MARKET_SYMBOLS)
     sector_rows = build_rows(sector_df, SECTOR_ETFS)
 
-    print("[DEBUG] market_rows sample =", market_rows[:5])
-    print("[DEBUG] sector_rows sample =", sector_rows[:5])
+    print("[DEBUG] market_rows =", market_rows[:3])
+    print("[DEBUG] sector_rows =", sector_rows[:3])
 
     sector_attention = summarize_sector_attention(sector_rows)
 
+    # =========================
     # ② 経済指標
+    # =========================
     events = fetch_minkabu_economic_events()
     macro_payload = split_events_for_mail(events, now)
 
     recent_events = macro_payload["yesterday_events"]
     upcoming_events = macro_payload["today_events"]
 
-    # ③ 金利（FRED）
+    # =========================
+    # ③ 金利
+    # =========================
     rate_extras = fetch_us_rate_extras()
 
+    # =========================
     # ④ 内部データ
+    # =========================
     breadth = fetch_market_breadth()
     etf_flows = fetch_etf_flows(market_rows)
     options_data = fetch_options_data(market_rows)
 
     print("[DEBUG] breadth =", breadth)
-    print("[DEBUG] etf_flows =", etf_flows)
-    print("[DEBUG] options_data =", options_data)
+    print("[DEBUG] etf =", etf_flows)
+    print("[DEBUG] options =", options_data)
 
+    # =========================
     # ⑤ スコア
+    # =========================
     score, reasons = score_market(
         market_rows,
         sector_rows,
@@ -67,7 +81,9 @@ def run():
 
     regime = classify_regime(score)
 
+    # =========================
     # ⑥ シグナル
+    # =========================
     signal, signal_details = generate_trend_signal(
         score,
         market_rows,
@@ -76,10 +92,14 @@ def run():
         upcoming_events,
     )
 
+    # =========================
     # ⑦ テーマ
+    # =========================
     themes = detect_market_themes(sector_rows, market_rows, reasons)
 
+    # =========================
     # ⑧ AI
+    # =========================
     ai_summary = generate_ai_summary(
         market_rows,
         sector_rows,
@@ -96,7 +116,9 @@ def run():
         themes=themes,
     )
 
+    # =========================
     # ⑨ HTML
+    # =========================
     html = build_html(
         market_rows,
         sector_rows,
@@ -117,15 +139,14 @@ def run():
     with open(LATEST_HTML_FILE, "w", encoding="utf-8") as f:
         f.write(html)
 
+    # =========================
     # ⑩ メール
+    # =========================
     send_mail("Daily Market Report", html)
 
     print("===== END MARKET AI =====")
 
     return {
         "score": score,
-        "regime": regime,
-        "breadth": breadth,
+        "regime": regime
     }
-
-from data.market_data import download_ohlc
