@@ -1,5 +1,58 @@
 import os
-from openai import OpenAI
+from open差from openai import OpenAI
+- USD/JPY、DXY、EUR/USD
+- WTI原油、ゴールド、銅
+- セクター強弱
+- 注目テーマ
+- 経済指標（直近結果と今日の予定）
+- Breadth
+- ETFフロー
+- Put/Call / オプションセンチメント
+
+■ 市場データ
+{chr(10).join(market_lines)}
+
+■ セクター
+{chr(10).join(sector_lines)}
+
+■ 直近経済指標（結果重視）
+{chr(10).join(recent_lines) if recent_lines else "なし"}
+
+■ 今日の経済指標
+{chr(10).join(upcoming_lines) if upcoming_lines else "なし"}
+
+■ Breadth
+{breadth if breadth else "なし"}
+
+■ ETFフロー
+{etf_flows if etf_flows else "なし"}
+
+■ オプション
+{options_data if options_data else "なし"}
+
+■ 注目テーマ
+{themes if themes else "なし"}
+
+■ スコア
+score={score}
+regime={regime}
+
+■ シグナル
+{signal}
+{"; ".join(signal_details) if signal_details else "特記事項なし"}
+
+■ 理由
+{"; ".join(reasons) if reasons else "特記事項なし"}
+"""
+
+    try:
+        res = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return res.choices[0].message.content
+    except Exception as e:
+        return f"AI要約の生成に失敗しました: {e}"
 
 
 def _event_to_text(e):
@@ -89,57 +142,3 @@ def generate_ai_summary(
 ■ 必ず触れる項目
 - 日経平均、NYダウ、NASDAQ、S&P500、Russell2000
 - VIX
-- 米10年金利・米2年債利回り・長短金利差
-- USD/JPY、DXY、EUR/USD
-- WTI原油、ゴールド、銅
-- セクター強弱
-- 注目テーマ
-- 経済指標（直近結果と今日の予定）
-- Breadth
-- ETFフロー
-- Put/Call / オプションセンチメント
-
-■ 市場データ
-{chr(10).join(market_lines)}
-
-■ セクター
-{chr(10).join(sector_lines)}
-
-■ 直近経済指標（結果重視）
-{chr(10).join(recent_lines) if recent_lines else "なし"}
-
-■ 今日の経済指標
-{chr(10).join(upcoming_lines) if upcoming_lines else "なし"}
-
-■ Breadth
-{breadth if breadth else "なし"}
-
-■ ETFフロー
-{etf_flows if etf_flows else "なし"}
-
-■ オプション
-{options_data if options_data else "なし"}
-
-■ 注目テーマ
-{themes if themes else "なし"}
-
-■ スコア
-score={score}
-regime={regime}
-
-■ シグナル
-{signal}
-{"; ".join(signal_details) if signal_details else "特記事項なし"}
-
-■ 理由
-{"; ".join(reasons) if reasons else "特記事項なし"}
-"""
-
-    try:
-        res = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return res.choices[0].message.content
-    except Exception as e:
-        return f"AI要約の生成に失敗しました: {e}"
