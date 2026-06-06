@@ -24,6 +24,13 @@ MARKET_SYMBOLS = {
     "WTI原油": "CL=F",
     "ゴールド": "GC=F",
     "銅": "HG=F",
+    
+    # 仮想通貨
+    "BTC (USD)": "BTC-USD",
+    "ETH (USD)": "ETH-USD",
+    "XRP (USD)": "XRP-USD",
+    "SOL (USD)": "SOL-USD",
+    
 }
 
 SECTOR_ETFS = {
