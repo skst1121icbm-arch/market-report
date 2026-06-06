@@ -1,74 +1,4 @@
-from config.settings import MARKET_SYMBOLS, SECTOR_ETFS, LATEST_HTML_FILEfrom configf_flows,
-        options_data=options_data,
-    )
-
-    regime = classify_regime(score)
-
-    # ⑥ シグナル
-    signal, signal_details = generate_trend_signal(
-        score,
-        market_rows,
-        sector_attention,
-        recent_events,
-        upcoming_events,
-    )
-
-    # ⑦ テーマ
-    themes = detect_market_themes(sector_rows, market_rows, reasons)
-
-    # ⑧ AI
-    ai_summary = generate_ai_summary(
-        market_rows,
-        sector_rows,
-        recent_events,
-        upcoming_events,
-        score,
-        regime,
-        signal,
-        signal_details,
-        reasons,
-        breadth=breadth,
-        etf_flows=etf_flows,
-        options_data=options_data,
-        themes=themes,
-    )
-
-    # ⑨ HTML
-    html = build_html(
-        market_rows,
-        sector_rows,
-        score,
-        regime,
-        signal,
-        signal_details,
-        reasons,
-        ai_summary,
-        macro_payload,
-        breadth,
-        etf_flows,
-        options_data,
-        themes,
-        rate_extras,
-    )
-
-    with open(LATEST_HTML_FILE, "w", encoding="utf-8") as f:
-        f.write(html)
-
-    # ⑩ メール送信
-    send_mail("Daily Market Report", html)
-
-    print("===== END MARKET AI =====")
-
-    return {
-        "score": score,
-        "regime": regime,
-        "breadth": breadth,
-        "etf_flows": etf_flows,
-        "options_data": options_data,
-    }
-
-from data.market_data import download_ohlc
-from data.economic_calendar import fetch_minkabu_economic_events, split_events_for_mail
+from config.settings import MARKET_SYMBOLS, SECTOR_ETFS, LATEST_HTML_FILEfrom config.settings import MARKET import fetch_minkabu_economic_events, split_events_for_mail
 from data.fred_api import fetch_us_rate_extras
 from data.market_internals import (
     fetch_market_breadth,
@@ -131,3 +61,71 @@ def run():
         recent_events,
         upcoming_events,
         breadth=breadth,
+        etf_flows=etf_flows,
+        options_data=options_data,
+    )
+
+    regime = classify_regime(score)
+
+    # ⑥ シグナル
+    signal, signal_details = generate_trend_signal(
+        score,
+        market_rows,
+        sector_attention,
+        recent_events,
+        upcoming_events,
+    )
+
+    # ⑦ テーマ
+    themes = detect_market_themes(sector_rows, market_rows, reasons)
+
+    # ⑧ AI
+    ai_summary = generate_ai_summary(
+        market_rows,
+        sector_rows,
+        recent_events,
+        upcoming_events,
+        score,
+        regime,
+        signal,
+        signal_details,
+        reasons,
+        breadth=breadth,
+        etf_flows=etf_flows,
+        options_data=options_data,
+        themes=themes,
+    )
+
+    # ⑨ HTML
+    html = build_html(
+        market_rows,
+        sector_rows,
+        score,
+        regime,
+        signal,
+        signal_details,
+        reasons,
+        ai_summary,
+        macro_payload,
+        breadth,
+        etf_flows,
+        options_data,
+        themes,
+        rate_extras,
+    )
+
+    with open(LATEST_HTML_FILE, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    # ⑩ メール
+    send_mail("Daily Market Report", html)
+
+    print("===== END MARKET AI =====")
+
+    return {
+        "score": score,
+        "regime": regime,
+        "breadth": breadth,
+    }
+
+from data.market_data import download_ohlc
