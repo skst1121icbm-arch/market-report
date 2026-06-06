@@ -3,7 +3,48 @@ import re
 from html import escape
 
 
-# ================= r.get("change_text")# =========================
+# =========================
+# BASIC HELPERS
+# =========================
+def _fmt_num(v):
+    if v in [None, "", "None"]:
+        return "N/A"
+    try:
+        return f"{float(v):.2f}"
+    except Exception:
+        return escape(str(v))
+
+
+def _fmt_pct(v):
+    if v in [None, "", "None"]:
+        return "N/A"
+    try:
+        return f"{float(v):.2f}%"
+    except Exception:
+        return escape(str(v))
+
+
+def _safe(v):
+    if v in [None, "", "None"]:
+        return "N/A"
+    return str(v)
+
+
+def _find(label, rows):
+    for r in rows or []:
+        if r.get("label") == label:
+            return r
+    return None
+
+
+def _val(label, rows):
+    """
+    常に2要素タプルを返す
+    """
+    r = _find(label, rows)
+    if not r:
+        return None, ""
+    return r.get("value"), r.get("change_text", "")
 
 
 def _color_change(v):
@@ -21,17 +62,8 @@ def _warn(text):
     return f'<span class="warn">{escape(str(text))}</span>'
 
 
-def _stars(e):
-    txt = f"{_safe(e.get('importance_label'))} {_safe(e.get('event_status'))}"
-    if "高" in txt or "重要" in txt:
-        return "★★★"
-    elif "中" in txt:
-        return "★★"
-    return "★"
-
-
 # =========================
-# summary formatting
+# SUMMARY
 # =========================
 def _clean_summary_text(text: str) -> str:
     """
@@ -42,26 +74,35 @@ def _clean_summary_text(text: str) -> str:
         return "N/A"
 
     s = str(text)
-
-    # 既存の bold を削除
     s = re.sub(r"</?b>", "", s, flags=re.IGNORECASE)
     s = s.replace("**", "")
 
     lines = s.split("\n")
-    out = []
+    blocks = []
 
     for i, line in enumerate(lines):
         line = line.strip()
         if not line:
             continue
-
-        escaped = escape(line)
+        esc = escape(line)
         if i == 0 and line.startswith("要約:"):
-            out.append(f'<div class="summary-lead">{escaped}</div>')
+            blocks.append(f'<div class="summary-lead">{esc}</div>')
         else:
-            out.append(f"<div>{escaped}</div>")
+            blocks.append(f"<div>{esc}</div>")
 
-    return "".join(out)
+    return "".join(blocks) if blocks else "N/A"
+
+
+# =========================
+# IMPORTANCE
+# =========================
+def _stars(e):
+    txt = f"{_safe(e.get('importance_label'))} {_safe(e.get('event_status'))}"
+    if "高" in txt or "重要" in txt:
+        return "★★★"
+    elif "中" in txt:
+        return "★★"
+    return "★"
 
 
 # =========================
@@ -153,10 +194,6 @@ def _style_block():
         margin: 8px 0 18px 0;
       }
 
-      .comment-line b {
-        font-weight: 700;
-      }
-
       @media only screen and (max-width: 640px) {
         body {
           max-width: 100%;
@@ -177,13 +214,9 @@ def _style_block():
 
 
 # =========================
-# table renderers
+# TABLE BUILDERS
 # =========================
 def _table_3col(title_icon, title, rows):
-    """
-    主要指数 / 金利 / 為替 / コモディティ / 仮想通貨
-    幅: 40 / 30 / 30 固定
-    """
     body = []
     for name, value, change in rows:
         body.append(f"""
@@ -213,10 +246,6 @@ def _table_3col(title_icon, title, rows):
 
 
 def _table_2col(title_icon, title, rows, col1="項目", col2="値"):
-    """
-    市場の広がり / セクター / ETFフロー / オプション
-    幅: 50 / 50 固定
-    """
     body = []
     for left, right in rows:
         body.append(f"""
@@ -243,10 +272,6 @@ def _table_2col(title_icon, title, rows, col1="項目", col2="値"):
 
 
 def _table_econ(title_icon, title, events):
-    """
-    経済指標
-    幅: 10 / 35 / 15 / 15 / 15 / 10 固定
-    """
     body = []
 
     if not events:
@@ -293,7 +318,7 @@ def _table_econ(title_icon, title, events):
 
 
 # =========================
-# main builder
+# MAIN
 # =========================
 def build_html(
     market_rows,
@@ -370,7 +395,6 @@ def build_html(
     crypto_rows = []
     for label in ["BTC (USD)", "ETH (USD)", "XRP (USD)", "SOL (USD)"]:
         v, c = _val(label, market_rows)
-        # 表示名は余計な (USD) を外してもよければここで調整可能
         display_name = label.replace(" (USD)", "")
         crypto_rows.append((display_name, v, c))
 
@@ -479,36 +503,3 @@ def build_html(
     </body>
     </html>
     """
-# basic helpers
-# =========================
-def _fmt_num(v):
-    try:
-        return f"{float(v):.2f}"
-    except Exception:
-        return "N/A"
-
-
-def _fmt_pct(v):
-    try:
-        return f"{float(v):.2f}%"
-    except Exception:
-        return "N/A"
-
-
-def _safe(v):
-    if v in [None, "", "None"]:
-        return "N/A"
-    return str(v)
-
-
-def _find(label, rows):
-    for r in rows:
-        if r.get("label") == label:
-            return r
-    return None
-
-
-def _val(label, rows):
-    r = _find(label, rows)
-    if not r:
-        return None, None
