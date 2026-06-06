@@ -1,6 +1,5 @@
 import os
-(from openai import OpenAI
-    market_rows,
+from open_rows,from openai import OpenAI
     sector_rows,
     recent_events,
     upcoming_events,
@@ -22,47 +21,51 @@ import os
 
     client = OpenAI(api_key=api_key)
 
-    market_lines = [
-        f"{r['label']} {r.get('change_text', 'N/A')}"
-        for r in market_rows
-    ]
+    # 市場
+    market_lines = []
+    for r in market_rows:
+        txt = r.get("change_text", "N/A")
+        market_lines.append(f"{r['label']} {txt}")
 
-    sector_lines = [
-        f"{r['label']} {r.get('change_text', 'N/A')}"
-        for r in sector_rows
-    ]
+    # セクター
+    sector_lines = []
+    for r in sector_rows:
+        txt = r.get("change_text", "N/A")
+        sector_lines.append(f"{r['label']} {txt}")
 
     prompt = f"""
 あなたは金融アナリストです。
 
-以下をもとに日本語で市場概況を書いてください。
+以下をもとに自然な日本語で市場概況を書いてください。
 
-【条件】
-・自然な文章（箇条書き禁止）
+条件:
+・箇条書き禁止
 ・500〜800文字
-・最後に今のトレンドを一言
+・最後にトレンドを一言
 
-【市場】
+市場:
 {chr(10).join(market_lines)}
 
-【セクター】
+セクター:
 {chr(10).join(sector_lines)}
 
-【Breadth】
+Breadth:
 {breadth}
 
-【ETF】
+ETF:
 {etf_flows}
 
-【Options】
+Options:
 {options_data}
 
-【テーマ】
+テーマ:
 {themes}
 
-【スコア】
-score={score}
-regime={regime}
+スコア:
+{score} / {regime}
+
+シグナル:
+{signal}
 """
 
     try:
@@ -77,3 +80,4 @@ regime={regime}
         return f"AIエラー: {e}"
 
 
+def generate_ai_summary(
