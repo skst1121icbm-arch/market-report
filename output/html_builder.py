@@ -447,8 +447,43 @@ def build_html(
     )
 
     # ===== オプション =====
+
+    fg = rate_extras.get("fear_greed")
+    fg_text = rate_extras.get("fear_greed_text")
+
+    # ✅ ✅ 色分け関数（ここに置く）
+    def _color_fg(score, text):
+        if score is None:
+            return "N/A"
+
+        try:
+            val = float(score)
+        except:
+            return str(score)
+
+        label = text.capitalize() if text else ""
+
+        # 🔴 Fear側
+        if val < 25:
+            return f'<span style="color:#dc2626;">{val:.0f} (Extreme Fear)</span>'
+        elif val < 50:
+            return f'<span style="color:#f59e0b;">{val:.0f} (Fear)</span>'
+    
+        # ⚪ Neutral
+        elif val < 60:
+            return f'<span style="color:#6b7280;">{val:.0f} (Neutral)</span>'
+    
+        # 🟢 Greed側
+        elif val < 75:
+            return f'<span style="color:#16a34a;">{val:.0f} (Greed)</span>'
+        else:
+            return f'<span style="color:#059669;">{val:.0f} (Extreme Greed)</span>'
+
     options_rows = [
         ("Put/Call", _fmt_num(options_data.get("put_call"))),
+        
+        ("フィア＆グリード指数", _color_fg(fg, fg_text)),
+
     ]
     options_table = _table_2col("🎯", "オプション", options_rows, col1="項目", col2="値")
     options_comment = (
