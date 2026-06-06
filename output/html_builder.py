@@ -1,6 +1,6 @@
-from utils.datetime_utils import now_jstfrom===========
-# フォーマット関数
-# ============================
+from utils.datetime_utils import now_jst
+
+
 def nl2br(text):
     if not text:
         return ""
@@ -41,9 +41,6 @@ def _val(label, rows):
     return _fmt_num(r.get("value")), r.get("change_text", "N/A")
 
 
-# ============================
-# HTML生成（最終版）
-# ============================
 def build_html(
     market_rows,
     sector_rows,
@@ -63,54 +60,33 @@ def build_html(
 
     today = now_jst().strftime("%Y-%m-%d")
 
-    # =========================
-    # 市場
-    # =========================
     sp_v, sp_c = _val("S&P500", market_rows)
     nd_v, nd_c = _val("NASDAQ", market_rows)
     dow_v, dow_c = _val("NYダウ", market_rows)
     rut_v, rut_c = _val("Russell2000", market_rows)
     nik_v, nik_c = _val("日経平均", market_rows)
 
-    # =========================
-    # ボラ
-    # =========================
     vix_v, vix_c = _val("VIX", market_rows)
 
-    # =========================
-    # 金利
-    # =========================
     y10_v, y10_c = _val("米10年金利", market_rows)
     y2_v = _fmt_num(rate_extras.get("米2年債利回り"))
 
-    # =========================
-    # 為替
-    # =========================
     dxy_v, dxy_c = _val("DXY", market_rows)
     uj_v, uj_c = _val("USD/JPY", market_rows)
     eu_v, eu_c = _val("EUR/USD", market_rows)
 
-    # =========================
-    # コモディティ
-    # =========================
     oil_v, oil_c = _val("WTI原油", market_rows)
     gold_v, gold_c = _val("ゴールド", market_rows)
     cop_v, cop_c = _val("銅", market_rows)
 
-    # =========================
-    # ✅ Market Breadth（今回の最重要部分）
-    # =========================
     ratio_txt = _fmt_pct(breadth.get("ratio"))
     nh = _fmt_opt(breadth.get("new_high"))
     nl = _fmt_opt(breadth.get("new_low"))
     state = _fmt_opt(breadth.get("state"))
 
-    # =========================
-    # HTML本体
-    # =========================
     html = f"""
     <html>
-    <body style="font-family:Arial; line-height:1.7;">
+    <body>
 
     <h2>📊 Daily Market Checklist ({today})</h2>
 
