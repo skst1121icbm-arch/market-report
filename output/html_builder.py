@@ -1,82 +1,7 @@
 from utils.datetime_utils import now_jst
 
 
-def nl2br(text):
-    if not text:
-        return ""
-    return str(text).replace("\n", "<br>")
-
-
-def _fmt_num(v):
-    try:
-        return f"{float(v):.2f}"
-    except Exception:
-        return "N/A"
-
-
-def _fmt_opt(v):
-    if v in [None, "", "None"]:
-        return "未取得"
-    return str(v)
-
-
-def _find_row(label, rows):
-    for r in rows:
-        if r["label"] == label:
-            return r
-    return None
-
-
-def _value_and_change(label, rows):
-    r = _find_row(label, rows)
-    if not r:
-        return "N/A", "N/A"
-
-    value = _fmt_num(r.get("value"))
-    change_text = r.get("change_text", "N/A")
-    return value, change_text
-
-
-def _event_line(e):
-    time_str = (
-        e["event_dt_jst"].strftime("%m/%d %H:%M")
-        if e.get("event_dt_jst")
-        else "未定"
-    )
-
-    status = e.get("event_status", "")
-    name = e.get("event_name", "")
-    forecast = _fmt_opt(e.get("forecast"))
-    actual = _fmt_opt(e.get("actual"))
-    previous = _fmt_opt(e.get("previous"))
-
-    if status == "結果":
-        return f"{time_str} {name}｜予想:{forecast} / 結果:{actual} / 前回:{previous}"
-    return f"{time_str} {name}｜予想:{forecast} / 前回:{previous}"
-
-
-def build_html(
-    market_rows,
-    sector_rows,
-    score,
-    regime,
-    signal,
-    signal_details,
-    reasons,
-    ai_summary,
-    macro_payload,
-    breadth,
-    etf_flows,
-    options_data,
-    themes,
-    rate_extras,
-):
-    today = now_jst().strftime("%Y-%m-%d")
-
-    # マーケット
-    sp_v, sp_c = _value_and_change("S&P500", market_rows)
-    nd_v, nd_c = _value_and_change("NASDAQ", market_rows)
-    dow_v, dow_c = _value_and_change("NYダウ", market_rows)
+ = _value_and_change("NYダウ", market_rows)def nl2br(text):
     rut_v, rut_c = _value_and_change("Russell2000", market_rows)
     nikkei_v, nikkei_c = _value_and_change("日経平均", market_rows)
 
@@ -202,3 +127,77 @@ def build_html(
     </html>
     """
     return html
+    if not text:
+        return ""
+    return str(text).replace("\n", "<br>")
+
+
+def _fmt_num(v):
+    try:
+        return f"{float(v):.2f}"
+    except Exception:
+        return "N/A"
+
+
+def _fmt_opt(v):
+    if v in [None, "", "None"]:
+        return "未取得"
+    return str(v)
+
+
+def _find_row(label, rows):
+    for r in rows:
+        if r["label"] == label:
+            return r
+    return None
+
+
+def _value_and_change(label, rows):
+    r = _find_row(label, rows)
+    if not r:
+        return "N/A", "N/A"
+
+    value = _fmt_num(r.get("value"))
+    change_text = r.get("change_text", "N/A")
+    return value, change_text
+
+
+def _event_line(e):
+    time_str = (
+        e["event_dt_jst"].strftime("%m/%d %H:%M")
+        if e.get("event_dt_jst")
+        else "未定"
+    )
+
+    status = e.get("event_status", "")
+    name = e.get("event_name", "")
+    forecast = _fmt_opt(e.get("forecast"))
+    actual = _fmt_opt(e.get("actual"))
+    previous = _fmt_opt(e.get("previous"))
+
+    if status == "結果":
+        return f"{time_str} {name}｜予想:{forecast} / 結果:{actual} / 前回:{previous}"
+    return f"{time_str} {name}｜予想:{forecast} / 前回:{previous}"
+
+
+def build_html(
+    market_rows,
+    sector_rows,
+    score,
+    regime,
+    signal,
+    signal_details,
+    reasons,
+    ai_summary,
+    macro_payload,
+    breadth,
+    etf_flows,
+    options_data,
+    themes,
+    rate_extras,
+):
+    today = now_jst().strftime("%Y-%m-%d")
+
+    # マーケット
+    sp_v, sp_c = _value_and_change("S&P500", market_rows)
+    nd_v, nd_c = _value_and_change("NASDAQ", market_rows)
