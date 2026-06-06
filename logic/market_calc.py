@@ -1,8 +1,7 @@
 from data.market_data import get_close_pair
 
 
-def calc_change_pct(curr, prev):
-    if curr is None or prev is None or prev == 0:
+def calc or prev is None or prev == 0:def calc_change_pct(curr, prev):
         return None
     return round((curr - prev) / prev * 100, 2)
 
@@ -25,10 +24,10 @@ def build_rows(df, symbol_map):
             {
                 "label": label,
                 "symbol": symbol,
-                "value": curr,            # 実際の値
+                "value": curr,
                 "prev_value": prev,
-                "change_pct": change,     # 数値としての前日比%
-                "change": change,         # 互換用
+                "change_pct": change,
+                "change": change,
                 "change_text": format_change(change),
             }
         )
