@@ -1,17 +1,30 @@
-from utils.datetime_utils import now_jst
-
-
+from utils.datetime_utils import now_jstfrom===========
+# フォーマット関数
+# ============================
 def nl2br(text):
     if not text:
         return ""
     return str(text).replace("\n", "<br>")
 
 
-def _fmt(v):
+def _fmt_num(v):
     try:
         return f"{float(v):.2f}"
     except:
         return "N/A"
+
+
+def _fmt_pct(v):
+    try:
+        return f"{float(v):.1f}%"
+    except:
+        return "N/A"
+
+
+def _fmt_opt(v):
+    if v in [None, "", "None"]:
+        return "未取得"
+    return str(v)
 
 
 def _find(label, rows):
@@ -25,9 +38,12 @@ def _val(label, rows):
     r = _find(label, rows)
     if not r:
         return "N/A", "N/A"
-    return _fmt(r.get("value")), r.get("change_text", "N/A")
+    return _fmt_num(r.get("value")), r.get("change_text", "N/A")
 
 
+# ============================
+# HTML生成（最終版）
+# ============================
 def build_html(
     market_rows,
     sector_rows,
@@ -44,30 +60,57 @@ def build_html(
     themes,
     rate_extras,
 ):
+
     today = now_jst().strftime("%Y-%m-%d")
 
+    # =========================
+    # 市場
+    # =========================
     sp_v, sp_c = _val("S&P500", market_rows)
     nd_v, nd_c = _val("NASDAQ", market_rows)
     dow_v, dow_c = _val("NYダウ", market_rows)
     rut_v, rut_c = _val("Russell2000", market_rows)
     nik_v, nik_c = _val("日経平均", market_rows)
 
+    # =========================
+    # ボラ
+    # =========================
     vix_v, vix_c = _val("VIX", market_rows)
 
+    # =========================
+    # 金利
+    # =========================
     y10_v, y10_c = _val("米10年金利", market_rows)
-    y2_v = _fmt(rate_extras.get("米2年債利回り"))
+    y2_v = _fmt_num(rate_extras.get("米2年債利回り"))
 
+    # =========================
+    # 為替
+    # =========================
     dxy_v, dxy_c = _val("DXY", market_rows)
     uj_v, uj_c = _val("USD/JPY", market_rows)
     eu_v, eu_c = _val("EUR/USD", market_rows)
 
+    # =========================
+    # コモディティ
+    # =========================
     oil_v, oil_c = _val("WTI原油", market_rows)
     gold_v, gold_c = _val("ゴールド", market_rows)
     cop_v, cop_c = _val("銅", market_rows)
 
+    # =========================
+    # ✅ Market Breadth（今回の最重要部分）
+    # =========================
+    ratio_txt = _fmt_pct(breadth.get("ratio"))
+    nh = _fmt_opt(breadth.get("new_high"))
+    nl = _fmt_opt(breadth.get("new_low"))
+    state = _fmt_opt(breadth.get("state"))
+
+    # =========================
+    # HTML本体
+    # =========================
     html = f"""
     <html>
-    <body>
+    <body style="font-family:Arial; line-height:1.7;">
 
     <h2>📊 Daily Market Checklist ({today})</h2>
 
@@ -95,23 +138,29 @@ def build_html(
     ゴールド {gold_v} ({gold_c})<br>
     銅 {cop_v} ({cop_c})
 
-    <h3>⑥ Breadth</h3>
-    {breadth}
+    <h3>📈 ⑥ Market Breadth</h3>
+    上昇銘柄比率: <b>{ratio_txt}</b><br>
+    新高値 / 新安値: {nh} / {nl}<br>
+    👉 状態: <b>{state}</b>
 
-    <h3>⑦ ETF</h3>
-    {etf_flows}
+    <h3>💰 ⑦ ETFフロー</h3>
+    SPY / QQQ / IWM: {etf_flows.get("SPY")} / {etf_flows.get("QQQ")} / {etf_flows.get("IWM")}<br>
+    👉 解釈: {etf_flows.get("interpretation")}
 
-    <h3>⑧ Options</h3>
-    {options_data}
+    <h3>😨 ⑧ Options</h3>
+    Put/Call: {options_data.get("put_call")}<br>
+    👉 {options_data.get("notable")}<br>
+    👉 センチメント: {options_data.get("sentiment")}
 
-    <h3>⑨ テーマ</h3>
-    {themes}
+    <h3>🎯 ⑨ テーマ</h3>
+    {", ".join(themes)}
 
-    <h3>⑩ AI</h3>
+    <h3>🧠 ⑩ AIサマリー</h3>
     {nl2br(ai_summary)}
 
-    <h3>スコア</h3>
-    {score} ({regime})
+    <h3>📊 スコア</h3>
+    score: {score} ({regime})<br>
+    シグナル: {signal}
 
     </body>
     </html>
