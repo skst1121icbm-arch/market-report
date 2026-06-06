@@ -383,7 +383,7 @@ rate_rows = [
     ("実質金利", real_rate, real_rate_change_text),       # ←追加
     ("利下げ折込回数", cut_expect, cut_expect_change_text),  # ←追加
 ]
-    rate_table = _table_3col("✅", "金利", rate_rows)
+rate_table = _table_3col("✅", "金利", rate_rows)
 
     try:
         spread_val = float(y10) - float(y2)
