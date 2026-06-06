@@ -1,6 +1,4 @@
-def generate_trend_signal(score, market_rows, sector_attention, recent, upcoming):
-
-    details = []
+def generate_trend_signal(score, market_rows, sector_attention, recent, upcoming):def generate_trend_signal(score, market = []
 
     for r in market_rows:
         if r.get("change_text"):
@@ -13,6 +11,9 @@ def generate_trend_signal(score, market_rows, sector_attention, recent, upcoming
         details.append("強い: " + ", ".join(leaders))
     if laggards:
         details.append("弱い: " + ", ".join(laggards))
+
+    if upcoming:
+        details.append("今後の重要指標: " + ", ".join(e["event_name"] for e in upcoming[:3]))
 
     if score >= 5:
         signal = "上昇トレンド"
