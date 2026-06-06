@@ -4,7 +4,7 @@ from data.market_data import download_ohlc
 from data.economic_calendar import fetch_minkabu_economic_events, split_events_for_mail
 from data.fred_api import fetch_us_rate_extras
 from data.market_internals import (
-    fetch_market_breadth,print("[DEBUG] rate_extras =", rate_extras)
+    fetch_market_breadth,
     fetch_etf_flows,
     fetch_options_data,
 )
