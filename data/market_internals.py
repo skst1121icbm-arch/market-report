@@ -1,59 +1,63 @@
 # =========================================
-# Market Breadth（完全版）
+# Market Breadth（構成銘柄数ウェイト版）
 # =========================================
 def fetch_market_breadth(market_rows=None, sector_rows=None):
+    """
+    上昇銘柄比率を、各セクターETFの構成銘柄数ウェイトで近似する。
+    - sector_rows の change_pct > 0 を「そのセクターは上昇」とみなす
+    - 上昇したセクターの構成銘柄数合計 / 全構成銘柄数合計 × 100
+    """
+
+    # 提案値（運用用の管理テーブル）
+    SECTOR_COUNTS = {
+        "テクノロジー": 69,
+        "金融": 80,        # XLF は 80 holdings と確認可 [2](https://www.tutorial.ai/b/how-to-create-folder-in-github)
+        "ヘルスケア": 61,
+        "一般消費": 53,
+        "生活必需": 38,
+        "資本財": 78,
+        "エネルギー": 23,
+        "素材": 28,
+        "通信": 24,
+        "公益": 31,
+        "不動産": 27,
+    }
 
     try:
-        lookup = {r["label"]: r for r in market_rows} if market_rows else {}
+        weighted_adv = 0
+        weighted_dec = 0
+        weighted_total = 0
 
-        # =========================
-        # ① Advance / Decline
-        # =========================
-        adv = 0
-        dec = 0
+        if not sector_rows:
+            return {
+                "ratio": None,
+                "state": "未取得",
+            }
 
-        targets = ["S&P500", "NASDAQ", "NYダウ", "Russell2000"]
+        for r in sector_rows:
+            label = r.get("label")
+            ch = r.get("change_pct")
 
-        for name in targets:
-            r = lookup.get(name)
-
-            if not r or r.get("change_pct") is None:
+            if label is None or ch is None:
                 continue
 
-            if r["change_pct"] > 0:
-                adv += 1
+            weight = SECTOR_COUNTS.get(label, 0)
+            if weight == 0:
+                continue
+
+            weighted_total += weight
+
+            if ch > 0:
+                weighted_adv += weight
             else:
-                dec += 1
+                weighted_dec += weight
 
-        total = adv + dec
-        ratio = round((adv / total) * 100, 1) if total > 0 else None
+        ratio = round((weighted_adv / weighted_total) * 100, 1) if weighted_total > 0 else None
 
-        # =========================
-        # ② New High / New Low（セクター代用）
-        # =========================
-        new_high = 0
-        new_low = 0
-
-        if sector_rows:
-            for r in sector_rows:
-
-                ch = r.get("change_pct")
-
-                if ch is None:
-                    continue
-
-                if ch > 1.5:
-                    new_high += 1
-                elif ch < -1.5:
-                    new_low += 1
-
-        # =========================
-        # ③ 状態
-        # =========================
         if ratio is None:
             state = "未取得"
         elif ratio >= 70:
-            state = "強い強気（全面上昇）"
+            state = "強い強気"
         elif ratio >= 55:
             state = "強気"
         elif ratio >= 45:
@@ -61,25 +65,17 @@ def fetch_market_breadth(market_rows=None, sector_rows=None):
         elif ratio >= 30:
             state = "弱気"
         else:
-            state = "強い弱気（全面安）"
+            state = "強い弱気"
 
         return {
-            "adv": adv,
-            "dec": dec,
             "ratio": ratio,
-            "new_high": new_high,
-            "new_low": new_low,
             "state": state,
         }
 
     except Exception as e:
         print("[ERROR] breadth:", e)
         return {
-            "adv": None,
-            "dec": None,
             "ratio": None,
-            "new_high": None,
-            "new_low": None,
             "state": "取得失敗",
         }
 
@@ -105,10 +101,13 @@ def fetch_etf_flows(market_rows=None):
     interpretation = "未取得"
 
     if spy:
-        if float(spy.replace("%", "")) > 0:
-            interpretation = "資金流入"
-        else:
-            interpretation = "資金流出"
+        try:
+            if float(spy.replace("%", "")) > 0:
+                interpretation = "資金流入"
+            else:
+                interpretation = "資金流出"
+        except Exception:
+            interpretation = "未取得"
 
     return {
         "SPY": spy,
@@ -124,7 +123,7 @@ def fetch_etf_flows(market_rows=None):
 def fetch_options_data(market_rows=None):
 
     try:
-        for r in market_rows:
+        for r in market_rows or []:
             if r["label"] == "VIX":
 
                 vix = r.get("value")
@@ -145,11 +144,11 @@ def fetch_options_data(market_rows=None):
 
                 return {
                     "put_call": put_call,
-                    "notable": f"VIX={round(vix,1)}",
+                    "notable": f"VIX={round(vix, 1)}",
                     "sentiment": sentiment,
                 }
 
-    except:
+    except Exception:
         pass
 
     return {
@@ -157,24 +156,3 @@ def fetch_options_data(market_rows=None):
         "notable": None,
         "sentiment": "未取得",
     }
-
-
-# =========================================
-# テーマ
-# =========================================
-def detect_market_themes(sector_rows, market_rows=None, reasons=None):
-
-    strong = [r["label"] for r in sector_rows if (r.get("change_pct") or 0) > 0]
-
-    themes = []
-
-    if "テクノロジー" in strong:
-        themes += ["AI", "半導体"]
-
-    if "エネルギー" in strong:
-        themes.append("エネルギー")
-
-    if not themes:
-        themes = ["分散相場"]
-
-    return list(dict.fromkeys(themes))
