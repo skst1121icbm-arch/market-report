@@ -376,26 +376,30 @@ try:
 except Exception:
     cut_expect_change_text = "N/A"
 
+
 # ✅ 最終テーブル
 rate_rows = [
     ("米10年債利回り", y10, y10c),
     ("米2年債利回り", y2, y2_change_text),
-    ("実質金利", real_rate, real_rate_change_text),       # ←追加
-    ("利下げ折込回数", cut_expect, cut_expect_change_text),  # ←追加
+    ("実質金利", real_rate, real_rate_change_text),
+    ("利下げ折込回数", cut_expect, cut_expect_change_text),
 ]
+
 rate_table = _table_3col("✅", "金利", rate_rows)
 
-    try:
-        spread_val = float(y10) - float(y2)
-        spread_text = f"{spread_val:.2f}"
-        if spread_val < 0:
-            spread_text = _warn(spread_text)
-    except Exception:
-        spread_text = "N/A"
+# ✅ インデント修正 ＆ HTML修正
+try:
+    spread_val = float(y10) - float(y2)
+    spread_text = f"{spread_val:.2f}"
+    if spread_val < 0:   # ✅ &lt; → <
+        spread_text = _warn(spread_text)
+except Exception:
+    spread_text = "N/A"
 
-    rate_comment = (
-        f'<div style="margin:-6px 0 12px 0;"><strong>10Y-2Y:</strong> {spread_text}</div>'
-    )
+rate_comment = (
+    f'<div style="margin:-6px 0 12px 0;"><strong>10Y-2Y:</strong> {spread_text}</div>'
+)
+
 
     # ===== 為替 =====
     fx_rows = []
