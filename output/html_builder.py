@@ -1,4 +1,8 @@
-from utils.datetime_utils import now_jstfrom utils.datetime_utils import now_j:
+from utils.datetime_utils import now_jst
+
+
+def nl2br(text):
+    if not text:
         return ""
     return str(text).replace("\n", "<br>")
 
@@ -17,7 +21,7 @@ def _find(label, rows):
     return None
 
 
-def _val_text(label, rows):
+def _val(label, rows):
     r = _find(label, rows)
     if not r:
         return "N/A", "N/A"
@@ -40,32 +44,26 @@ def build_html(
     themes,
     rate_extras,
 ):
-
     today = now_jst().strftime("%Y-%m-%d")
 
-    # マーケット
-    sp_v, sp_c = _val_text("S&P500", market_rows)
-    nd_v, nd_c = _val_text("NASDAQ", market_rows)
-    dow_v, dow_c = _val_text("NYダウ", market_rows)
-    rut_v, rut_c = _val_text("Russell2000", market_rows)
-    nikkei_v, nikkei_c = _val_text("日経平均", market_rows)
+    sp_v, sp_c = _val("S&P500", market_rows)
+    nd_v, nd_c = _val("NASDAQ", market_rows)
+    dow_v, dow_c = _val("NYダウ", market_rows)
+    rut_v, rut_c = _val("Russell2000", market_rows)
+    nik_v, nik_c = _val("日経平均", market_rows)
 
-    # ボラ
-    vix_v, vix_c = _val_text("VIX", market_rows)
+    vix_v, vix_c = _val("VIX", market_rows)
 
-    # 金利
-    y10_v, y10_c = _val_text("米10年金利", market_rows)
+    y10_v, y10_c = _val("米10年金利", market_rows)
     y2_v = _fmt(rate_extras.get("米2年債利回り"))
 
-    # 為替
-    dxy_v, dxy_c = _val_text("DXY", market_rows)
-    uj_v, uj_c = _val_text("USD/JPY", market_rows)
-    eu_v, eu_c = _val_text("EUR/USD", market_rows)
+    dxy_v, dxy_c = _val("DXY", market_rows)
+    uj_v, uj_c = _val("USD/JPY", market_rows)
+    eu_v, eu_c = _val("EUR/USD", market_rows)
 
-    # コモディティ
-    oil_v, oil_c = _val_text("WTI原油", market_rows)
-    gold_v, gold_c = _val_text("ゴールド", market_rows)
-    copper_v, copper_c = _val_text("銅", market_rows)
+    oil_v, oil_c = _val("WTI原油", market_rows)
+    gold_v, gold_c = _val("ゴールド", market_rows)
+    cop_v, cop_c = _val("銅", market_rows)
 
     html = f"""
     <html>
@@ -78,7 +76,7 @@ def build_html(
     NASDAQ {nd_v} ({nd_c})<br>
     Dow {dow_v} ({dow_c})<br>
     Russell {rut_v} ({rut_c})<br>
-    日経 {nikkei_v} ({nikkei_c})
+    日経 {nik_v} ({nik_c})
 
     <h3>② ボラティリティ</h3>
     VIX {vix_v} ({vix_c})
@@ -95,7 +93,7 @@ def build_html(
     <h3>⑤ コモディティ</h3>
     原油 {oil_v} ({oil_c})<br>
     ゴールド {gold_v} ({gold_c})<br>
-    銅 {copper_v} ({copper_c})
+    銅 {cop_v} ({cop_c})
 
     <h3>⑥ Breadth</h3>
     {breadth}
@@ -120,6 +118,3 @@ def build_html(
     """
 
     return html
-
-
-def nl2br(text):
