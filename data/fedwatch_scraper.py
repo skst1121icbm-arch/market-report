@@ -1,7 +1,6 @@
 import re
 import requests
 import pandas as pd
-from bs4 import BeautifulSoup
 
 
 FEDWATCH_URL = "https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html"
@@ -13,6 +12,8 @@ HEADERS = {
         "Chrome/126.0.0.0 Safari/537.36"
     ),
     "Accept-Language": "en-US,en;q=0.9,ja;q=0.8",
+    "Referer": "https://www.google.com/",
+    "Connection": "keep-alive",
 }
 
 
@@ -37,16 +38,14 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 def _range_midpoint(range_text: str):
     """
     例:
-      "350-375"   -> 3.625
-      "3.50-3.75" -> 3.625
-      "425-450"   -> 4.375
+      '350-375'   -> 3.625
+      '3.50-3.75' -> 3.625
+      '425-450'   -> 4.375
     """
     if not range_text:
         return None
 
-    s = str(range_text).strip()
-    s = s.replace(" ", "")
-
+    s = str(range_text).strip().replace(" ", "")
     m = re.match(r"^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$", s)
     if not m:
         return None
@@ -54,7 +53,7 @@ def _range_midpoint(range_text: str):
     a = float(m.group(1))
     b = float(m.group(2))
 
-    # 350-375 のような表記なら % に戻す
+    # 350-375 のような bps 風表記なら % に直す
     if a > 50 and b > 50:
         a = a / 100.0
         b = b / 100.0
@@ -87,7 +86,6 @@ def _expected_midpoint_from_table(df: pd.DataFrame, prob_col: str):
     for _, row in df.iterrows():
         midpoint = _range_midpoint(row.get(range_col))
         prob = _safe_float(row.get(prob_col))
-
         if midpoint is None or prob is None:
             continue
 
@@ -116,12 +114,13 @@ def _find_probability_table_from_html(html: str):
     for idx, df in enumerate(tables):
         df = _normalize_columns(df)
         cols = [str(c) for c in df.columns]
-
         print(f"DEBUG table[{idx}] cols =", cols)
 
-        # 緩めに判定
-        has_target = any("target" in str(c).lower() for c in cols) or any("range" in str(c).lower() for c in cols)
-        if has_target:
+        # 緩めに判定:
+        # - Target/Range 系カラムを含む表を優先
+        has_target = any("target" in c.lower() for c in cols)
+        has_range = any("range" in c.lower() for c in cols)
+        if has_target or has_range:
             return df
 
     return None
@@ -139,11 +138,9 @@ def _detect_probability_columns(df: pd.DataFrame):
     for c in cols:
         cl = c.lower()
 
-        # Current
         if current_col is None and "current" in cl:
             current_col = c
 
-        # 1 day ago の複数表記に対応
         if day_ago_col is None:
             if (
                 "1 day" in cl
@@ -167,9 +164,15 @@ def fetch_fedwatch_rate_cuts_scrape(current_target_midpoint=3.625):
     例:
         cuts_current = 2.25
         cuts_change  = -0.25
+
+    注:
+        公開ページが 403 を返す場合は (None, None) を返す。
     """
     try:
-        res = requests.get(FEDWATCH_URL, headers=HEADERS, timeout=30)
+        session = requests.Session()
+        session.headers.update(HEADERS)
+
+        res = session.get(FEDWATCH_URL, timeout=30)
         res.raise_for_status()
         html = res.text
     except Exception as e:
@@ -203,14 +206,13 @@ def fetch_fedwatch_rate_cuts_scrape(current_target_midpoint=3.625):
         print("[WARN] FedWatch implied current midpoint not computed")
         return None, None
 
-    # 25bpごとの利下げ回数換算
+    # 25bp単位の利下げ回数に換算
     cuts_current = round((current_target_midpoint - implied_current) / 0.25, 2)
 
     if implied_prev is not None:
         prev_cuts = round((current_target_midpoint - implied_prev) / 0.25, 2)
         cuts_change = round(cuts_current - prev_cuts, 2)
     else:
-        # 前日が拾えないときは N/Aにせず 0.0 扱いにしたいならここを変える
         cuts_change = None
 
     return cuts_current, cuts_change
@@ -218,6 +220,6 @@ def fetch_fedwatch_rate_cuts_scrape(current_target_midpoint=3.625):
 
 def fetch_fedwatch_rate_cuts():
     """
-    将来 API 版へ差し替えやすいラッパー
+    将来 API 実装へ差し替えやすいラッパー
     """
     return fetch_fedwatch_rate_cuts_scrape(current_target_midpoint=3.625)
