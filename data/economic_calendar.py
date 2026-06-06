@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from datetimeInfo
+from zoneinfo import ZoneInfo
 
 # =========================
 # TIMEZONE
