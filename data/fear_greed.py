@@ -21,6 +21,10 @@ def fetch_fear_greed():
         fg = data.get("fear_and_greed", {})
         score = fg.get("score")
         rating = fg.get("rating")
+        
+        # ✅ デバッグ追加
+        print("[DEBUG] FearGreed:", score, rating)
+
 
         return score, rating
 
