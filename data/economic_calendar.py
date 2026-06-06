@@ -34,7 +34,7 @@ def _jp_date_to_iso(text: str) -> str:
 
 
 # =========================
-# 取得
+# データ取得
 # =========================
 def _fetch_html():
     res = requests.get(MINKABU_URL, headers=HEADERS, timeout=30)
@@ -55,13 +55,13 @@ def _parse_minkabu_calendar(html: str):
     while i < len(lines):
         line = lines[i]
 
-        # 日付
+        # 日付判定
         if re.search(r"\d{4}年\d{2}月\d{2}日", line):
             current_date = _jp_date_to_iso(line)
             i += 1
             continue
 
-        # 時刻
+        # 時刻判定
         if re.match(r"^\d{2}:\d{2}$", line) or line == "未定":
             if i + 6 < len(lines):
                 event_time = line
@@ -96,18 +96,20 @@ def _parse_minkabu_calendar(html: str):
 def fetch_minkabu_economic_events():
     try:
         html = _fetch_html()
-        events = _parse_minkabu_calendar(html)
-        return events
+        return _parse_minkabu_calendar(html)
     except Exception as e:
         print("[WARN] fetch failed:", e)
         return []
 
 
 # =========================
-# メール表示用分割（最終版）
+# メール用分割（JST完全対応）
 # =========================
-def split_events_for_mail(events, now_jst):
-    today = now_jst.date()
+def split_events_for_mail(events, now_dt):
+    # ✅ JST強制
+    now = now_dt.astimezone(JST)
+
+    today = now.date()
     yesterday = today - timedelta(days=1)
 
     # 今週（月曜〜日曜）
@@ -128,32 +130,49 @@ def split_events_for_mail(events, now_jst):
         except Exception:
             continue
 
-        # ===== 昨日 =====
+        # =========================
+        # JST基準で分類
+        # =========================
+
+        # 昨日
         if dt == yesterday:
             yesterday_events.append(e)
 
-        # ===== 本日 =====
+        # 本日
         elif dt == today:
             today_events.append(e)
 
-        # ===== 今週（重要・未来のみ）=====
+        # =========================
+        # 今週（重要・未来）
+        # =========================
         if (
-            today < dt <= end_of_week                      # 未来のみ
-            and e.get("event_status") != "結果"             # 未発表のみ
+            today < dt <= end_of_week
+            and e.get("event_status") != "結果"
             and (
-                "高" in str(e.get("importance_label"))     # ★★★
-                or "中" in str(e.get("importance_label"))  # ★★
+                "高" in str(e.get("importance_label"))
+                or "中" in str(e.get("importance_label"))
             )
         ):
             week_events.append(e)
 
-    # ✅ 時系列ソート（重要）
+    # =========================
+    # ソート（時間順）
+    # =========================
     def sort_key(e):
         date = e.get("event_date_jst", "")
         time = e.get("event_time_jst", "99:99")
         return f"{date} {time}"
 
+    yesterday_events = sorted(yesterday_events, key=sort_key)
+    today_events = sorted(today_events, key=sort_key)
     week_events = sorted(week_events, key=sort_key)
+
+    # =========================
+    # デバッグ（任意）
+    # =========================
+    print("[DEBUG] yesterday:", len(yesterday_events))
+    print("[DEBUG] today:", len(today_events))
+    print("[DEBUG] week:", len(week_events))
 
     return {
         "yesterday_events": yesterday_events,
