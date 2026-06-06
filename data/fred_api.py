@@ -21,29 +21,58 @@ def fred_get(path, params=None):
     return res.json()
 
 
-def fetch_latest(series_id):
+def fetch_latest_and_prev(series_id):
+    """
+    直近の有効な2件を返す
+    戻り値:
+      (latest_value, prev_value)
+    """
     try:
         data = fred_get(
             "series/observations",
             {
                 "series_id": series_id,
                 "sort_order": "desc",
-                "limit": 10,
+                "limit": 20,
             },
         )
 
+        vals = []
         for o in data.get("observations", []):
             v = o.get("value")
             if v not in [None, ".", "NaN", ""]:
-                return float(v)
-    except Exception:
-        return None
+                vals.append(float(v))
+            if len(vals) >= 2:
+                break
 
-    return None
+        if len(vals) >= 2:
+            return vals[0], vals[1]
+        elif len(vals) == 1:
+            return vals[0], None
+
+    except Exception:
+        return None, None
+
+    return None, None
 
 
 def fetch_us_rate_extras():
+    # 2Y
+    y2_latest, y2_prev = fetch_latest_and_prev(FRED_SERIES_IDS["米2年債利回り"])
+
+    y2_change_pct = None
+    if y2_latest is not None and y2_prev not in [None, 0]:
+        try:
+            y2_change_pct = round((y2_latest - y2_prev) / y2_prev * 100, 2)
+        except Exception:
+            y2_change_pct = None
+
+    # 実質金利(10Y)
+    real10_latest, _ = fetch_latest_and_prev(FRED_SERIES_IDS["実質金利(10Y)"])
+
     return {
-        "米2年債利回り": fetch_latest(FRED_SERIES_IDS["米2年債利回り"]),
-        "実質金利(10Y)": fetch_latest(FRED_SERIES_IDS["実質金利(10Y)"]),
+        "米2年債利回り": y2_latest,
+        "米2年債利回り_前回": y2_prev,
+        "米2年債利回り_前日比_pct": y2_change_pct,
+        "実質金利(10Y)": real10_latest,
     }
