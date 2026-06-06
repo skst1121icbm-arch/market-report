@@ -1,10 +1,6 @@
-from datetime import datetime, timedelta
-from zone# =========================================from zoneinfo import ZoneInfo
-# 既知の重要指標の補正値
+from datetime import datetime, timedeltafrom datetime import========
+# 既知の重要指標の補正値（NFPなど）
 # =========================================
-# 2026-06-05 発表（5月分）
-# NFP: Actual 172K / Forecast 85K / Previous 179K
-# Unemployment Rate: Actual 4.3% / Previous 4.3%
 KNOWN_EVENT_FIXES = [
     {
         "event_date_jst": "2026-06-05",
@@ -30,64 +26,56 @@ KNOWN_EVENT_FIXES = [
 
 
 # =========================================
-# 文字列正規化
+# 文字正規化
 # =========================================
-def _norm_text(v):
-    if v is None:
+def _safe(v):
+    if v in [None, "", "None"]:
         return ""
     return str(v).strip()
 
 
 def _norm_date_str(v):
-    """
-    date / datetime / 文字列 を YYYY-MM-DD に寄せる
-    """
     if v is None:
         return ""
 
-    # datetime/date
-    try:
-        if hasattr(v, "strftime"):
+    # datetime / date
+    if hasattr(v, "strftime"):
+        try:
             return v.strftime("%Y-%m-%d")
-    except Exception:
-        pass
+        except:
+            pass
 
-    s = str(v).strip()
+    s = str(v).strip().replace("/", "-")
 
-    # 2026-06-05 / 2026/06/05
-    s = s.replace("/", "-")
     if len(s) >= 10:
         return s[:10]
 
     return s
 
 
-def _name_matches(event_name, keywords):
-    name = _norm_text(event_name)
+def _name_matches(name, keywords):
+    name = _safe(name)
     return any(k in name for k in keywords)
 
 
 # =========================================
-# 補正
+# 補正処理
 # =========================================
 def apply_known_event_fixes(events):
-    """
-    スクレイピング済みイベントに対して既知の補正を適用
-    """
     fixed = []
 
     for e in events or []:
         item = dict(e)
 
-        event_date_str = _norm_date_str(item.get("event_date_jst"))
-        country = _norm_text(item.get("country"))
-        event_name = _norm_text(item.get("event_name"))
+        event_date = _norm_date_str(item.get("event_date_jst"))
+        country = _safe(item.get("country"))
+        name = _safe(item.get("event_name"))
 
         for rule in KNOWN_EVENT_FIXES:
             if (
-                event_date_str == rule["event_date_jst"]
+                event_date == rule["event_date_jst"]
                 and country == rule["country"]
-                and _name_matches(event_name, rule["name_keywords"])
+                and _name_matches(name, rule["name_keywords"])
             ):
                 item["forecast"] = rule["forecast"]
                 item["actual"] = rule["actual"]
@@ -102,69 +90,60 @@ def apply_known_event_fixes(events):
 
 
 # =========================================
-# あなたの既存スクレイピング結果をここに通す想定
+# メイン：イベント取得（既存と繋ぐ）
 # =========================================
 def fetch_minkabu_economic_events():
     """
-    既存のスクレイパーが返す events を最後に補正する。
-    ここでは既存実装を残したいので、raw_events を返す部分だけ
-    あなたの今のコードに置き換えてください。
+    ここにあなたの既存スクレイピングコードを入れる
+    最後に補正をかけるだけ
     """
 
-    # -------------------------------------
-    # ここはあなたの既存取得処理に置き換え
-    # 例:
-    # raw_events = existing_scrape_minkabu()
-    # -------------------------------------
+    # ✅ あなたの既存処理に置き換える
     raw_events = []
 
-    # 最後に補正をかける
+    # ✅ NFP補正適用
     return apply_known_event_fixes(raw_events)
 
 
 # =========================================
-# メール表示用に昨日 / 本日へ分ける
+# 昨日 / 本日に分割
 # =========================================
 def split_events_for_mail(events, now_jst):
-    """
-    events の event_date_jst を元に
-    昨日 / 本日へ分割する
-    """
     today = now_jst.date()
     yesterday = today - timedelta(days=1)
 
-    yesterday_events = []
-    today_events = []
+    y_events = []
+    t_events = []
 
     for e in events or []:
         d = e.get("event_date_jst")
 
-        # datetime/date/string を安全に date 化
         date_obj = None
 
+        # datetime系
         if hasattr(d, "date"):
             try:
                 date_obj = d.date()
-            except Exception:
-                date_obj = None
-        elif hasattr(d, "year") and hasattr(d, "month") and hasattr(d, "day"):
-            date_obj = d
-        else:
-            ds = _norm_date_str(d)
+            except:
+                pass
+
+        # string
+        if date_obj is None:
             try:
-                date_obj = datetime.strptime(ds, "%Y-%m-%d").date()
-            except Exception:
-                date_obj = None
+                date_obj = datetime.strptime(_norm_date_str(d), "%Y-%m-%d").date()
+            except:
+                pass
 
         if date_obj == yesterday:
-            yesterday_events.append(e)
+            y_events.append(e)
         elif date_obj == today:
-            today_events.append(e)
+            t_events.append(e)
 
     return {
-        "yesterday_events": yesterday_events,
-        "today_events": today_events,
+        "yesterday_events": y_events,
+        "today_events": t_events,
     }
+from zoneinfo import ZoneInfo
 
 JST = ZoneInfo("Asia/Tokyo")
 
