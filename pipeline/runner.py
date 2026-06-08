@@ -52,15 +52,27 @@ def run():
     # ③ 経済指標
     # =========================
     events = fetch_minkabu_economic_events()
-    macro_payload = split_events_for_mail(events, now)
 
-    print("[DEBUG] total events =", len(events))
-    print("[DEBUG] yesterday =", len(macro_payload["yesterday_events"]))
-    print("[DEBUG] today =", len(macro_payload["today_events"]))
-    print("[DEBUG] week =", len(macro_payload["week_events"]))
+    print(
+        "[DEBUG] economic events count =",
+        len(events)
+    )
 
-    for e in macro_payload["today_events"][:5]:
-        print("[TODAY]", e["event_date_jst"], e["event_time_jst"], e["country"], e["event_name"])
+    if events:
+        print(
+            "[DEBUG] first event =",
+            events[0]
+        )
+
+    macro_payload = split_events_for_mail(
+        events,
+        now
+    )
+
+    print(
+        "[DEBUG] macro payload =",
+        macro_payload
+    )
 
     recent_events = macro_payload["yesterday_events"]
     upcoming_events = macro_payload["today_events"]
