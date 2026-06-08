@@ -167,22 +167,44 @@ def _parse_minkabu_calendar(html):
                 continue
 
             try:
+                event_name_raw = (
+                    cols[time_idx + 2]
+                    if len(cols) > time_idx + 2
+                    else ""
+                )
 
+                country = None
+
+                if event_name_raw.startswith("アメリカ・"):
+                    country = "US"
+                    event_name = event_name_raw.replace(
+                        "アメリカ・",
+                        "",
+                        1
+                    )
+
+                elif event_name_raw.startswith("米国・"):
+                    country = "US"
+                    event_name = event_name_raw.replace(
+                        "米国・",
+                        "",
+                        1
+                )
+
+                elif event_name_raw.startswith("日本・"):
+                    country = "JP"
+                    event_name = event_name_raw.replace(
+                        "日本・",
+                        "",
+                        1
+                    )
+
+                else:
+                    continue
+                    
                 event_time = (
                     cols[time_idx]
                     if len(cols) > time_idx
-                    else ""
-                )
-
-                country_raw = (
-                    cols[time_idx + 1]
-                    if len(cols) > time_idx + 1
-                    else ""
-                )
-
-                event_name = (
-                    cols[time_idx + 2]
-                    if len(cols) > time_idx + 2
                     else ""
                 )
 
@@ -210,9 +232,6 @@ def _parse_minkabu_calendar(html):
                     else ""
                 )
 
-                if country_raw not in COUNTRY_MAP:
-                    continue
-
                 if not current_date:
                     continue
 
@@ -226,7 +245,7 @@ def _parse_minkabu_calendar(html):
                     {
                         "event_date_jst": current_date,
                         "event_time_jst": event_time,
-                        "country": COUNTRY_MAP[country_raw],
+                        "country": country,
                         "event_name": event_name,
                         "forecast": forecast,
                         "actual": actual,
