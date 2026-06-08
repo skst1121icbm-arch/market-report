@@ -151,17 +151,23 @@ def _clean_summary_text(text: str) -> str:
 # IMPORTANCE
 # =========================
 def _stars(e):
-    txt = f"{_safe(e.get('importance_label'))} {_safe(e.get('event_status'))}"
-    if "高" in txt or "重要" in txt:
-        return "★★★"
-    elif "中" in txt:
-        return "★★"
-    return "★"
+
+    rank = int(
+        e.get("importance_rank", 1)
+    )
+
+    return (
+        "★" * rank
+        + "☆" * (5 - rank)
+    )
 
 
 def _is_high_importance(e):
-    txt = str(e.get("importance_label", ""))
-    return ("高" in txt) or ("重要" in txt)
+
+    return (
+        e.get("importance_rank", 1)
+        >= 4
+    )
 
 
 def _highlight_event_name(e):
