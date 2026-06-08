@@ -50,7 +50,7 @@ SUPER_IMPORTANT_KEYWORDS = [
 ]
 
 def _safe(v):
-return "" if v is None else str(v).strip()
+    return "" if v is None else str(v).strip()
 
 def _normalize_text(text):
 if not text:
