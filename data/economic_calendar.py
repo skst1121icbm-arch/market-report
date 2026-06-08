@@ -70,11 +70,11 @@ def _importance_rank(label: str) -> int:
 
         pips = float(m.group(1))
 
-        if pips >= 10:
+        if pips >= 20:
             return 5
-        elif pips >= 7:
+        elif pips >= 10:
             return 4
-        elif pips >= 4:
+        elif pips >= 5:
             return 3
         elif pips >= 2:
             return 2
