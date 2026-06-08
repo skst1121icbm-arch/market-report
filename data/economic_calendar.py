@@ -5,7 +5,6 @@ import requests
 from bs4 import BeautifulSoup
 
 JST = ZoneInfo("Asia/Tokyo")
-
 MINKABU_URL = "https://fx.minkabu.jp/indicators/"
 
 HEADERS = {
@@ -18,6 +17,24 @@ HEADERS = {
 }
 
 TARGET_COUNTRIES = {"日本", "アメリカ"}
+
+COUNTRY_ALIASES = {
+    "日本": "日本",
+    "jp": "日本",
+    "japan": "日本",
+    "アメリカ": "アメリカ",
+    "米国": "アメリカ",
+    "米": "アメリカ",
+    "us": "アメリカ",
+    "usa": "アメリカ",
+    "united states": "アメリカ",
+}
+
+SUPER_IMPORTANT_KEYWORDS = [
+    "cpi", "消費者物価", "fomc", "政策金利", "雇用統計",
+    "非農業部門雇用者数", "失業率", "pce", "ism",
+    "小売売上高", "gdp", "日銀", "boj", "パウエル"
+]
 
 
 # =========================
@@ -33,6 +50,7 @@ def _normalize_text(text: str) -> str:
     if not text:
         return ""
     text = text.replace("\u3000", " ")
+    text = text.replace("\xa0", " ")
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
@@ -41,11 +59,93 @@ def _jp_date_to_iso(text: str) -> str:
     """
     '2026年06月08日' -> '2026-06-08'
     """
-    m = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日", text)
+    m = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日", _normalize_text(text))
     if not m:
         return ""
     y, mo, d = m.groups()
     return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+
+
+def _normalize_country(text: str) -> str:
+    s = _normalize_text(text).lower()
+    for k, v in COUNTRY_ALIASES.items():
+        if s == k.lower():
+            return v
+    return ""
+
+
+def _extract_time(text: str) -> str:
+    """
+    例:
+      '21:30' -> '21:30'
+      '未定' / '--:--' -> ''
+    """
+    s = _normalize_text(text)
+    m = re.search(r"(\d{1,2}):(\d{2})", s)
+    if not m:
+        return ""
+    hh, mm = m.groups()
+    return f"{int(hh):02d}:{mm}"
+
+
+def _looks_like_numberish(text: str) -> bool:
+    s = _normalize_text(text)
+    if not s:
+        return False
+    if s in {"-", "—", "N/A", "n/a"}:
+        return True
+    return bool(re.search(r"[0-9]", s))
+
+
+def _extract_importance(cells) -> str:
+    """
+    High / Medium / Low をかなり緩めに判定
+    """
+    joined = " ".join([_normalize_text(c) for c in cells])
+
+    if re.search(r"(高|重要|★★★)", joined):
+        return "高"
+    if re.search(r"(中|★★)", joined):
+        return "中"
+    if re.search(r"(低|★)", joined):
+        return "低"
+
+    # アイコン代替 / alt / タイトル等がテキストになっているケース
+    if "importance-high" in joined.lower():
+        return "高"
+    if "importance-middle" in joined.lower():
+        return "中"
+    if "importance-low" in joined.lower():
+        return "低"
+
+    return ""
+
+
+def _extract_status(cells) -> str:
+    """
+    '結果' / '予定' / '発表前' / '未定' などを緩めに判定
+    """
+    joined = " ".join([_normalize_text(c) for c in cells])
+
+    if "結果" in joined:
+        return "結果"
+    if "予定" in joined:
+        return "予定"
+    if "未定" in joined:
+        return "未定"
+    if "発表前" in joined:
+        return "予定"
+    return ""
+
+
+def _is_super_important(event) -> bool:
+    name = _normalize_text(event.get("event_name", "")).lower()
+    if event.get("importance_label") == "高":
+        return True
+    for kw in SUPER_IMPORTANT_KEYWORDS:
+        if kw in name:
+            return True
+    return False
 
 
 # =========================
@@ -57,59 +157,207 @@ def _fetch_html():
     return res.text
 
 
+# =========================
+# PARSE MINKABU
+# =========================
+def _find_nearest_date_text(tr):
+    """
+    tr の前方にある 'YYYY年MM月DD日' テキストを探す
+    """
+    cur = tr
+    for _ in range(15):
+        cur = cur.find_previous()
+        if cur is None:
+            break
+        txt = _normalize_text(cur.get_text(" ", strip=True))
+        iso = _jp_date_to_iso(txt)
+        if iso:
+            return iso
+    return ""
+
+
+def _parse_row_cells(cells, event_date_jst):
+    """
+    1行のセルから event dict を作る
+    想定列:
+      時刻 / 国 / 指標 / 予想 / 結果 / 前回 / 重要度...
+    ただし HTML変更に備えてゆるく判定
+    """
+    if len(cells) < 3:
+        return None
+
+    norm_cells = [_normalize_text(c) for c in cells]
+
+    # 国候補
+    country_idx = None
+    country_val = ""
+    for i, c in enumerate(norm_cells):
+        nc = _normalize_country(c)
+        if nc in TARGET_COUNTRIES:
+            country_idx = i
+            country_val = nc
+            break
+
+    if country_idx is None:
+        return None
+
+    # 時刻候補 -> 国より前で最初に見つかる HH:MM
+    time_val = ""
+    for i in range(0, country_idx + 1):
+        t = _extract_time(norm_cells[i])
+        if t:
+            time_val = t
+            break
+
+    # 指標名候補 -> 国の次で、数値っぽくなく、短すぎないテキスト
+    event_name = ""
+    event_name_idx = None
+    for i in range(country_idx + 1, len(norm_cells)):
+        c = norm_cells[i]
+        if not c:
+            continue
+        if _looks_like_numberish(c):
+            continue
+        if c in {"結果", "予定", "高", "中", "低"}:
+            continue
+        # 見出しっぽい長さ
+        if len(c) >= 2:
+            event_name = c
+            event_name_idx = i
+            break
+
+    if not event_name:
+        return None
+
+    # 残りの数値っぽいセルから forecast / actual / previous を順に割当
+    numberish = []
+    for i in range(event_name_idx + 1, len(norm_cells)):
+        c = norm_cells[i]
+        if _looks_like_numberish(c):
+            numberish.append(c)
+
+    forecast = numberish[0] if len(numberish) >= 1 else ""
+    actual = numberish[1] if len(numberish) >= 2 else ""
+    previous = numberish[2] if len(numberish) >= 3 else ""
+
+    importance = _extract_importance(norm_cells)
+    status = _extract_status(norm_cells)
+
+    # status が空でも actual があれば「結果」、なければ「予定」に寄せる
+    if not status:
+        status = "結果" if actual else "予定"
+
+    # 国コードは html_builder 側が country をそのまま出すので日本語で統一
+    event = {
+        "event_date_jst": event_date_jst,
+        "event_time_jst": time_val,
+        "country": country_val,
+        "event_name": event_name,
+        "forecast": forecast,
+        "actual": actual,
+        "previous": previous,
+        "importance_label": importance,
+        "event_status": status,
+    }
+
+    return event
+
+
 def _parse_minkabu_calendar(html: str):
     """
     みんかぶ経済指標カレンダーから
     日本 / アメリカのイベントを抽出
     """
     soup = BeautifulSoup(html, "html.parser")
-    text = soup.get_text("\n", strip=True)
-
-    lines = [_normalize_text(x) for x in text.splitlines()]
-    lines = [x for x in lines if x]
 
     events = []
-    current_date = ""
+    seen = set()
 
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-
-        # 日付行
-        if re.search(r"\d{4}年\d{2}月\d{2}日", line):
-            current_date = _jp_date_to_iso(line)
-            i += 1
+    # table / tr ベースで幅広く拾う
+    for tr in soup.find_all("tr"):
+        cells = tr.find_all(["td", "th"])
+        if not cells:
             continue
 
-        # 時刻行（例: 08:50 / 21:30 / 未定）
-        if re.match(r"^\d{2}:\d{2}$", line) or line == "未定":
-            if i + 6 < len(lines):
-                event_time = line
-                country = lines[i + 1]
-                event_name = lines[i + 2]
-                importance = lines[i + 3]
-                # lines[i + 4] = 前回ドル円変動幅
-                previous = lines[i + 5]
-                forecast = lines[i + 6]
-                actual = lines[i + 7] if i + 7 < len(lines) else ""
-
-                if country in TARGET_COUNTRIES and current_date:
-                    events.append({
-                        "event_date_jst": current_date,
-                        "event_time_jst": event_time,
-                        "country": "JP" if country == "日本" else "US" if country == "アメリカ" else country,
-                        "event_name": event_name,
-                        "forecast": forecast,
-                        "actual": actual,
-                        "previous": previous,
-                        "importance_label": importance,
-                        "event_status": "結果" if actual not in ["", "---"] else "予定",
-                    })
-
-            i += 1
+        texts = [_normalize_text(c.get_text(" ", strip=True)) for c in cells]
+        if not any(texts):
             continue
 
-        i += 1
+        event_date_jst = _find_nearest_date_text(tr)
+        if not event_date_jst:
+            # tr自体に日付があるケース
+            joined = " ".join(texts)
+            event_date_jst = _jp_date_to_iso(joined)
+
+        if not event_date_jst:
+            continue
+
+        event = _parse_row_cells(texts, event_date_jst)
+        if not event:
+            continue
+
+        key = (
+            event["event_date_jst"],
+            event["event_time_jst"],
+            event["country"],
+            event["event_name"],
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        events.append(event)
+
+    # それでも空ならテキスト fallback を試す
+    if not events:
+        text = soup.get_text("\n", strip=True)
+        lines = [_normalize_text(x) for x in text.splitlines() if _normalize_text(x)]
+
+        current_date = ""
+        for line in lines:
+            iso = _jp_date_to_iso(line)
+            if iso:
+                current_date = iso
+                continue
+
+            # 日本 / アメリカ + 時刻を含む行だけ簡易抽出
+            if ("日本" in line or "アメリカ" in line or "米国" in line or "米 " in line) and re.search(r"\d{1,2}:\d{2}", line):
+                country = ""
+                if "日本" in line:
+                    country = "日本"
+                elif "アメリカ" in line or "米国" in line or re.search(r"\bUS\b", line, flags=re.I):
+                    country = "アメリカ"
+
+                if country not in TARGET_COUNTRIES:
+                    continue
+
+                t = _extract_time(line)
+                # 時刻以降のテキストを指標名候補に
+                after_time = re.split(r"\d{1,2}:\d{2}", line, maxsplit=1)
+                event_name = after_time[1].strip() if len(after_time) > 1 else ""
+                if not event_name:
+                    continue
+
+                event = {
+                    "event_date_jst": current_date,
+                    "event_time_jst": t,
+                    "country": country,
+                    "event_name": event_name,
+                    "forecast": "",
+                    "actual": "",
+                    "previous": "",
+                    "importance_label": "",
+                    "event_status": "予定",
+                }
+
+                key = (
+                    event["event_date_jst"],
+                    event["event_time_jst"],
+                    event["country"],
+                    event["event_name"],
+                )
+                if key not in seen:
+                    seen.add(key)
+                    events.append(event)
 
     return events
 
@@ -125,7 +373,7 @@ def fallback_events():
         {
             "event_date_jst": "2026-06-05",
             "event_time_jst": "21:30",
-            "country": "US",
+            "country": "アメリカ",
             "event_name": "非農業部門雇用者数（NFP）",
             "forecast": "85K",
             "actual": "172K",
@@ -136,7 +384,7 @@ def fallback_events():
         {
             "event_date_jst": "2026-06-05",
             "event_time_jst": "21:30",
-            "country": "US",
+            "country": "アメリカ",
             "event_name": "失業率",
             "forecast": "4.3%",
             "actual": "4.3%",
@@ -175,11 +423,12 @@ def _parse_event_datetime_jst(event):
     if not date_str:
         return None
 
+    if not time_str:
+        # 時刻不明なら JST 00:00 扱い
+        time_str = "00:00"
+
     try:
-        if time_str and time_str != "未定":
-            dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
-        else:
-            dt = datetime.strptime(date_str, "%Y-%m-%d")
+        dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
         return dt.replace(tzinfo=JST)
     except Exception:
         return None
@@ -191,67 +440,57 @@ def _parse_event_datetime_jst(event):
 def split_events_for_mail(events, now_dt):
     """
     日本時間基準で:
-      - yesterday_events
-      - today_events
-      - week_events（今週・重要）
+    - yesterday_events
+    - today_events
+    - week_events（今週・重要）
+    - super_important_events
     に分割する
     """
-    # 現在時刻を必ずJSTで判定
     now = now_dt.astimezone(JST)
-
     today = now.date()
-    yesterday = today - timedelta(days=1)
-
-    # 今週（月曜〜日曜）
-    start_of_week = today - timedelta(days=today.weekday())
-    end_of_week = start_of_week + timedelta(days=6)
+    end_of_week_window = today + timedelta(days=7)
 
     yesterday_events = []
     today_events = []
     week_events = []
+    super_important_events = []
 
     for e in events or []:
-        event_dt = _parse_event_datetime_jst(e)
-        if not event_dt:
+        dt = _parse_event_datetime_jst(e)
+        if not dt:
             continue
 
-        event_date = event_dt.date()
+        d = dt.date()
 
-        # ===== 昨日（JST基準）=====
-        if event_date == yesterday:
+        # 昨日
+        if d == (today - timedelta(days=1)):
             yesterday_events.append(e)
 
-        # ===== 本日（JST基準）=====
-        elif event_date == today:
+        # 今日
+        if d == today:
             today_events.append(e)
 
-        # ===== 今週（重要・未来のみ）=====
-        if (
-            today < event_date <= end_of_week
-            and e.get("event_status") != "結果"
-            and (
-                "高" in str(e.get("importance_label"))
-                or "中" in str(e.get("importance_label"))
-            )
-        ):
-            week_events.append(e)
+        # 今週（今日は含む / 7日先まで）
+        if today <= d <= end_of_week_window:
+            if e.get("importance_label") in {"高", "中"} or _is_super_important(e):
+                week_events.append(e)
 
-    def sort_key(e):
-        dt = _parse_event_datetime_jst(e)
-        if dt is None:
-            return datetime.max.replace(tzinfo=JST)
-        return dt
+        # 超重要
+        if _is_super_important(e):
+            super_important_events.append(e)
 
-    yesterday_events = sorted(yesterday_events, key=sort_key)
-    today_events = sorted(today_events, key=sort_key)
-    week_events = sorted(week_events, key=sort_key)
+    # ソート
+    def _sort_key(x):
+        return (_safe(x.get("event_date_jst")), _safe(x.get("event_time_jst")))
 
-    print("[DEBUG] yesterday:", len(yesterday_events))
-    print("[DEBUG] today:", len(today_events))
-    print("[DEBUG] week:", len(week_events))
+    yesterday_events = sorted(yesterday_events, key=_sort_key)
+    today_events = sorted(today_events, key=_sort_key)
+    week_events = sorted(week_events, key=_sort_key)
+    super_important_events = sorted(super_important_events, key=_sort_key)
 
     return {
         "yesterday_events": yesterday_events,
         "today_events": today_events,
         "week_events": week_events,
+        "super_important_events": super_important_events[:10],
     }
