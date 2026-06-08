@@ -272,8 +272,8 @@ def _parse_row_cells(cells, event_date_jst):
 def _parse_minkabu_calendar(html: str):
 
     soup = BeautifulSoup(html, "html.parser")
-    text = soup.get_text("\n", strip=True)
 
+    text = soup.get_text("\n", strip=True)
     lines = [_normalize_text(x) for x in text.split("\n") if _normalize_text(x)]
 
     events = []
@@ -281,36 +281,45 @@ def _parse_minkabu_calendar(html: str):
 
     for line in lines:
 
-        # 日付抽出
+        # ======================
+        # 日付更新
+        # ======================
         iso = _jp_date_to_iso(line)
         if iso:
             current_date = iso
             continue
 
-        # 条件（日本 or 米 + 時刻）
+        # ======================
+        # 条件フィルタ
+        # ======================
         if not re.search(r"\d{1,2}:\d{2}", line):
             continue
 
         if not ("日本" in line or "米" in line or "アメリカ" in line):
             continue
 
-        # 国判定
+        # ======================
+        # 国
+        # ======================
         if "日本" in line:
             country = "日本"
         else:
             country = "アメリカ"
 
+        # ======================
         # 時刻
-        time_match = re.search(r"\d{1,2}:\d{2}", line)
-        time_val = time_match.group(0) if time_match else ""
+        # ======================
+        m = re.search(r"\d{1,2}:\d{2}", line)
+        time_val = m.group(0) if m else ""
 
-        # 指標名（時刻以降）
-        event_name = re.split(r"\d{1,2}:\d{2}", line, 1)[-1].strip()
-
+        # ======================
+        # 指標名
+        # ======================
+        event_name = line.split(time_val, 1)[-1].strip()
         if not event_name:
             continue
 
-        event = {
+        events.append({
             "event_date_jst": current_date,
             "event_time_jst": time_val,
             "country": country,
@@ -320,9 +329,7 @@ def _parse_minkabu_calendar(html: str):
             "previous": "",
             "importance_label": "",
             "event_status": "予定",
-        }
-
-        events.append(event)
+        })
 
     return events
 
