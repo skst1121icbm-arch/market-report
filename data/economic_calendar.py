@@ -9,301 +9,393 @@ JST = ZoneInfo("Asia/Tokyo")
 MINKABU_URL = "https://fx.minkabu.jp/indicators/"
 
 HEADERS = {
-"User-Agent": (
-"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-"AppleWebKit/537.36 (KHTML, like Gecko) "
-"Chrome/126.0 Safari/537.36"
-),
-"Accept-Language": "ja,en-US;q=0.9",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/126.0 Safari/537.36"
+    ),
+    "Accept-Language": "ja,en-US;q=0.9",
 }
 
 COUNTRY_MAP = {
-"日本": "JP",
-"日": "JP",
-"アメリカ": "US",
-"米国": "US",
-"米": "US",
+    "日本": "JP",
+    "日": "JP",
+    "アメリカ": "US",
+    "米国": "US",
+    "米": "US",
 }
 
 NO_RESULT_VALUES = {
-"",
-"-",
-"--",
-"---",
-"未定",
-"未発表",
-"N/A",
-"null",
+    "",
+    "-",
+    "--",
+    "---",
+    "未定",
+    "未発表",
+    "N/A",
+    "null",
 }
 
 SUPER_IMPORTANT_KEYWORDS = [
-"CPI",
-"消費者物価指数",
-"PCE",
-"FOMC",
-"政策金利",
-"雇用統計",
-"非農業部門雇用者数",
-"NFP",
-"失業率",
-"GDP",
+    "CPI",
+    "消費者物価指数",
+    "PCE",
+    "FOMC",
+    "政策金利",
+    "雇用統計",
+    "非農業部門雇用者数",
+    "NFP",
+    "失業率",
+    "GDP",
 ]
+
 
 def _safe(v):
     return "" if v is None else str(v).strip()
 
-def _normalize_text(text):
-if not text:
-return ""
 
-```
-text = text.replace("\u3000", " ")
-text = re.sub(r"\s+", " ", text)
-return text.strip()
-```
+def _normalize_text(text):
+    if not text:
+        return ""
+
+    text = text.replace("\u3000", " ")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
 
 def _jp_date_to_iso(text):
-m = re.search(
-r"(\d{4})年(\d{1,2})月(\d{1,2})日",
-text
-)
+    m = re.search(
+        r"(\d{4})年(\d{1,2})月(\d{1,2})日",
+        text,
+    )
 
-```
-if not m:
-    return ""
+    if not m:
+        return ""
 
-y, mth, d = m.groups()
+    y, mth, d = m.groups()
 
-return f"{int(y):04d}-{int(mth):02d}-{int(d):02d}"
-```
+    return f"{int(y):04d}-{int(mth):02d}-{int(d):02d}"
+
 
 def _fetch_html():
 
-```
-res = requests.get(
-    MINKABU_URL,
-    headers=HEADERS,
-    timeout=30
-)
+    res = requests.get(
+        MINKABU_URL,
+        headers=HEADERS,
+        timeout=30,
+    )
 
-res.raise_for_status()
+    res.raise_for_status()
 
-html = res.text
+    html = res.text
 
-print(
-    "[DEBUG] html length:",
-    len(html)
-)
+    print(
+        "[DEBUG] html length:",
+        len(html),
+    )
 
-return html
-```
+    return html
+
 
 def _parse_minkabu_calendar(html):
 
-```
-soup = BeautifulSoup(
-    html,
-    "html.parser"
-)
+    soup = BeautifulSoup(
+        html,
+        "html.parser",
+    )
 
-tables = soup.find_all("table")
-
-print(
-    "[DEBUG] tables:",
-    len(tables)
-)
-
-events = []
-
-current_date = None
-
-date_pattern = re.compile(
-    r"\d{4}年\d{1,2}月\d{1,2}日"
-)
-
-for table_idx, table in enumerate(tables):
-
-    rows = table.find_all("tr")
+    tables = soup.find_all("table")
 
     print(
-        f"[DEBUG] table={table_idx} rows={len(rows)}"
+        "[DEBUG] tables:",
+        len(tables),
     )
 
-    #
-    # 日付探索
-    #
-    for tag in table.find_all_previous():
+    events = []
 
-        txt = _normalize_text(
-            tag.get_text(" ", strip=True)
+    current_date = None
+
+    date_pattern = re.compile(
+        r"\d{4}年\d{1,2}月\d{1,2}日"
+    )
+
+    for table_idx, table in enumerate(tables):
+
+        rows = table.find_all("tr")
+
+        print(
+            f"[DEBUG] table={table_idx} rows={len(rows)}"
         )
 
-        if date_pattern.search(txt):
-            current_date = _jp_date_to_iso(txt)
-            break
+        for tag in table.find_all_previous():
 
-    for row_idx, tr in enumerate(rows):
-
-        cols = [
-            _normalize_text(
-                x.get_text(" ", strip=True)
-            )
-            for x in tr.find_all(["td", "th"])
-        ]
-
-        if len(cols) < 5:
-            continue
-
-        #
-        # 最初の20行だけログ
-        #
-        if len(events) < 5:
-            print(
-                "[DEBUG] row:",
-                cols
+            txt = _normalize_text(
+                tag.get_text(" ", strip=True)
             )
 
-        time_idx = None
-
-        for i, v in enumerate(cols):
-
-            if (
-                re.match(
-                    r"^\d{2}:\d{2}$",
-                    v
-                )
-                or v == "未定"
-            ):
-                time_idx = i
+            if date_pattern.search(txt):
+                current_date = _jp_date_to_iso(txt)
                 break
 
-        if time_idx is None:
-            continue
+        for tr in rows:
 
-        try:
+            cols = [
+                _normalize_text(
+                    x.get_text(" ", strip=True)
+                )
+                for x in tr.find_all(["td", "th"])
+            ]
 
-            event_time = (
-                cols[time_idx]
-                if len(cols) > time_idx
-                else ""
-            )
-
-            country_raw = (
-                cols[time_idx + 1]
-                if len(cols) > time_idx + 1
-                else ""
-            )
-
-            event_name = (
-                cols[time_idx + 2]
-                if len(cols) > time_idx + 2
-                else ""
-            )
-
-            importance = (
-                cols[time_idx + 3]
-                if len(cols) > time_idx + 3
-                else ""
-            )
-
-            previous = (
-                cols[time_idx + 4]
-                if len(cols) > time_idx + 4
-                else ""
-            )
-
-            forecast = (
-                cols[time_idx + 5]
-                if len(cols) > time_idx + 5
-                else ""
-            )
-
-            actual = (
-                cols[time_idx + 6]
-                if len(cols) > time_idx + 6
-                else ""
-            )
-
-            if country_raw not in COUNTRY_MAP:
+            if len(cols) < 5:
                 continue
 
-            if not current_date:
+            if len(events) < 5:
+                print("[DEBUG] row:", cols)
+
+            time_idx = None
+
+            for i, v in enumerate(cols):
+
+                if (
+                    re.match(r"^\d{2}:\d{2}$", v)
+                    or v == "未定"
+                ):
+                    time_idx = i
+                    break
+
+            if time_idx is None:
                 continue
 
-            event_status = (
-                "予定"
-                if actual in NO_RESULT_VALUES
-                else "結果"
-            )
+            try:
 
-            events.append({
-                "event_date_jst": current_date,
-                "event_time_jst": event_time,
-                "country": COUNTRY_MAP[country_raw],
-                "event_name": event_name,
-                "forecast": forecast,
-                "actual": actual,
-                "previous": previous,
-                "importance_label": importance,
-                "event_status": event_status,
-            })
+                event_time = (
+                    cols[time_idx]
+                    if len(cols) > time_idx
+                    else ""
+                )
 
-        except Exception as e:
+                country_raw = (
+                    cols[time_idx + 1]
+                    if len(cols) > time_idx + 1
+                    else ""
+                )
 
-            print(
-                "[WARN] parse row error:",
-                e
-            )
+                event_name = (
+                    cols[time_idx + 2]
+                    if len(cols) > time_idx + 2
+                    else ""
+                )
 
-#
-# 重複除去
-#
-dedup = {}
+                importance = (
+                    cols[time_idx + 3]
+                    if len(cols) > time_idx + 3
+                    else ""
+                )
 
-for e in events:
+                previous = (
+                    cols[time_idx + 4]
+                    if len(cols) > time_idx + 4
+                    else ""
+                )
 
-    key = (
-        e["event_date_jst"],
-        e["event_time_jst"],
-        e["country"],
-        e["event_name"],
+                forecast = (
+                    cols[time_idx + 5]
+                    if len(cols) > time_idx + 5
+                    else ""
+                )
+
+                actual = (
+                    cols[time_idx + 6]
+                    if len(cols) > time_idx + 6
+                    else ""
+                )
+
+                if country_raw not in COUNTRY_MAP:
+                    continue
+
+                if not current_date:
+                    continue
+
+                event_status = (
+                    "予定"
+                    if actual in NO_RESULT_VALUES
+                    else "結果"
+                )
+
+                events.append(
+                    {
+                        "event_date_jst": current_date,
+                        "event_time_jst": event_time,
+                        "country": COUNTRY_MAP[country_raw],
+                        "event_name": event_name,
+                        "forecast": forecast,
+                        "actual": actual,
+                        "previous": previous,
+                        "importance_label": importance,
+                        "event_status": event_status,
+                    }
+                )
+
+            except Exception as e:
+
+                print(
+                    "[WARN] parse row error:",
+                    e,
+                )
+
+    dedup = {}
+
+    for e in events:
+
+        key = (
+            e["event_date_jst"],
+            e["event_time_jst"],
+            e["country"],
+            e["event_name"],
+        )
+
+        dedup[key] = e
+
+    events = list(dedup.values())
+
+    events.sort(
+        key=lambda x: (
+            x["event_date_jst"],
+            x["event_time_jst"],
+        )
     )
 
-    dedup[key] = e
-
-events = list(dedup.values())
-
-events.sort(
-    key=lambda x: (
-        x["event_date_jst"],
-        x["event_time_jst"]
+    print(
+        "[INFO] economic events parsed:",
+        len(events),
     )
-)
 
-print(
-    "[INFO] economic events parsed:",
-    len(events)
-)
+    return events
 
-return events
-```
 
 def fetch_minkabu_economic_events():
 
-```
-try:
+    try:
 
-    html = _fetch_html()
+        html = _fetch_html()
 
-    return _parse_minkabu_calendar(
-        html
+        return _parse_minkabu_calendar(
+            html
+        )
+
+    except Exception as e:
+
+        print(
+            "[ERROR] economic calendar:",
+            e,
+        )
+
+        return []
+
+
+def _parse_event_datetime_jst(event):
+
+    try:
+
+        date_str = event.get(
+            "event_date_jst",
+            "",
+        )
+
+        time_str = event.get(
+            "event_time_jst",
+            "00:00",
+        )
+
+        if (
+            not time_str
+            or time_str == "未定"
+        ):
+            time_str = "00:00"
+
+        return datetime.strptime(
+            f"{date_str} {time_str}",
+            "%Y-%m-%d %H:%M",
+        ).replace(
+            tzinfo=JST
+        )
+
+    except Exception:
+        return None
+
+
+def split_events_for_mail(
+    events,
+    now_dt,
+):
+
+    now = now_dt.astimezone(JST)
+
+    today = now.date()
+    yesterday = today - timedelta(days=1)
+
+    start_of_week = (
+        today - timedelta(days=today.weekday())
     )
 
-except Exception as e:
+    end_of_week = (
+        start_of_week + timedelta(days=6)
+    )
+
+    yesterday_events = []
+    today_events = []
+    week_events = []
+    super_important_events = []
+
+    for e in events:
+
+        dt = _parse_event_datetime_jst(e)
+
+        if not dt:
+            continue
+
+        event_date = dt.date()
+
+        if event_date == yesterday:
+            yesterday_events.append(e)
+
+        if event_date == today:
+            today_events.append(e)
+
+        if (
+            today < event_date <= end_of_week
+            and e.get("event_status") == "予定"
+        ):
+            week_events.append(e)
+
+        event_name = str(
+            e.get(
+                "event_name",
+                "",
+            )
+        )
+
+        if any(
+            keyword in event_name
+            for keyword in SUPER_IMPORTANT_KEYWORDS
+        ):
+            super_important_events.append(e)
 
     print(
-        "[ERROR] economic calendar:",
-        e
+        "[INFO]",
+        f"yesterday={len(yesterday_events)}",
+        f"today={len(today_events)}",
+        f"week={len(week_events)}",
+        f"super={len(super_important_events)}",
     )
 
-    return []
+    return {
+        "super_important_events":
+            super_important_events,
+        "yesterday_events":
+            yesterday_events,
+        "today_events":
+            today_events,
+        "week_events":
+            week_events,
+    }
