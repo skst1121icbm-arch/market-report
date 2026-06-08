@@ -62,6 +62,27 @@ def _normalize_text(text):
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
+def _importance_rank(label: str) -> int:
+    try:
+        m = re.search(r"([0-9.]+)", label)
+        if not m:
+            return 1
+
+        pips = float(m.group(1))
+
+        if pips >= 10:
+            return 5
+        elif pips >= 7:
+            return 4
+        elif pips >= 4:
+            return 3
+        elif pips >= 2:
+            return 2
+        else:
+            return 1
+
+    except Exception:
+        return 1
 
 def _jp_date_to_iso(text):
     m = re.search(
@@ -208,11 +229,9 @@ def _parse_minkabu_calendar(html):
                     else ""
                 )
 
-                importance = ""
-
-                previous = (
-                    cols[-3]
-                    if len(cols) >= 3
+                importance = (
+                    cols[4]
+                    if len(cols) > 4
                     else ""
                 )
 
@@ -257,6 +276,9 @@ def _parse_minkabu_calendar(html):
                         "actual": actual,
                         "previous": previous,
                         "importance_label": importance,
+                        "importance_rank": _importance_rank(
+                            importance
+                        ),
                         "event_status": event_status,
                     }
                 )
