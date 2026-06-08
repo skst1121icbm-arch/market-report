@@ -235,6 +235,12 @@ def _parse_minkabu_calendar(html):
                     else ""
                 )
 
+                previous = (
+                    cols[-3]
+                    if len(cols) >= 3
+                    else ""
+                )
+
                 forecast = (
                     cols[-2]
                     if len(cols) >= 2
