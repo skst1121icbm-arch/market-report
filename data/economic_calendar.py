@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+    from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import re
 import requests
@@ -189,7 +189,7 @@ def _parse_minkabu_calendar(html):
                         "米国・",
                         "",
                         1
-                )
+                    )
 
                 elif event_name_raw.startswith("日本・"):
                     country = "JP"
@@ -208,27 +208,23 @@ def _parse_minkabu_calendar(html):
                     else ""
                 )
 
-                importance = (
-                    cols[time_idx + 3]
-                    if len(cols) > time_idx + 3
-                    else ""
-                )
+                importance = ""
 
                 previous = (
-                    cols[time_idx + 4]
-                    if len(cols) > time_idx + 4
+                    cols[-3]
+                    if len(cols) >= 3
                     else ""
                 )
 
                 forecast = (
-                    cols[time_idx + 5]
-                    if len(cols) > time_idx + 5
+                    cols[-2]
+                    if len(cols) >= 2
                     else ""
                 )
 
                 actual = (
-                    cols[time_idx + 6]
-                    if len(cols) > time_idx + 6
+                    cols[-1]
+                    if len(cols) >= 1
                     else ""
                 )
 
@@ -241,6 +237,16 @@ def _parse_minkabu_calendar(html):
                     else "結果"
                 )
 
+                print(
+                    "[EVENT]",
+                    current_date,
+                    event_time,
+                    country,
+                    event_name,
+                    previous,
+                    forecast,
+                    actual,
+                )
                 events.append(
                     {
                         "event_date_jst": current_date,
