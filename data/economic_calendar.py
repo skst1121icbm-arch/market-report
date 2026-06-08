@@ -145,19 +145,29 @@ def _parse_minkabu_calendar(html):
         rows = table.find_all("tr")
 
         print(
-            f"[DEBUG] table={table_idx} rows={len(rows)}"
+            f"[TABLE DEBUG] "
+            f"table_idx={table_idx} "
+            f"current_date={current_date}"
         )
 
         for tag in table.find_all_previous():
-
+            
             txt = _normalize_text(
                 tag.get_text(" ", strip=True)
             )
 
+            print(f"[TEXT] {txt}")
+
             if date_pattern.search(txt):
                 current_date = _jp_date_to_iso(txt)
+                
+                print(
+                    f"[DATE FOUND] {txt} -> {current_date}"
+                )
+                
                 break
-
+           
+            
         for tr in rows:
 
             cols = [
