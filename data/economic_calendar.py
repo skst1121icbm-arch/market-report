@@ -270,100 +270,59 @@ def _parse_row_cells(cells, event_date_jst):
 
 
 def _parse_minkabu_calendar(html: str):
-    """
-    みんかぶ経済指標カレンダーから
-    日本 / アメリカのイベントを抽出
-    """
+
     soup = BeautifulSoup(html, "html.parser")
+    text = soup.get_text("\n", strip=True)
+
+    lines = [_normalize_text(x) for x in text.split("\n") if _normalize_text(x)]
 
     events = []
-    seen = set()
+    current_date = ""
 
-    # table/tr ベースで拾う
-    for tr in soup.find_all("tr"):
-        cells = tr.find_all(["td", "th"])
-        if not cells:
+    for line in lines:
+
+        # 日付抽出
+        iso = _jp_date_to_iso(line)
+        if iso:
+            current_date = iso
             continue
 
-        texts = [_normalize_text(c.get_text(" ", strip=True)) for c in cells]
-        if not any(texts):
+        # 条件（日本 or 米 + 時刻）
+        if not re.search(r"\d{1,2}:\d{2}", line):
             continue
 
-        event_date_jst = _find_nearest_date_text(tr)
-
-        # tr自体に日付がある場合
-        if not event_date_jst:
-            joined = " ".join(texts)
-            event_date_jst = _jp_date_to_iso(joined)
-
-        if not event_date_jst:
+        if not ("日本" in line or "米" in line or "アメリカ" in line):
             continue
 
-        event = _parse_row_cells(texts, event_date_jst)
-        if not event:
+        # 国判定
+        if "日本" in line:
+            country = "日本"
+        else:
+            country = "アメリカ"
+
+        # 時刻
+        time_match = re.search(r"\d{1,2}:\d{2}", line)
+        time_val = time_match.group(0) if time_match else ""
+
+        # 指標名（時刻以降）
+        event_name = re.split(r"\d{1,2}:\d{2}", line, 1)[-1].strip()
+
+        if not event_name:
             continue
 
-        key = (
-            event["event_date_jst"],
-            event["event_time_jst"],
-            event["country"],
-            event["event_name"],
-        )
-        if key in seen:
-            continue
+        event = {
+            "event_date_jst": current_date,
+            "event_time_jst": time_val,
+            "country": country,
+            "event_name": event_name,
+            "forecast": "",
+            "actual": "",
+            "previous": "",
+            "importance_label": "",
+            "event_status": "予定",
+        }
 
-        seen.add(key)
         events.append(event)
-
-    # fallback的な補助抽出
-    if not events:
-        text = soup.get_text("\n", strip=True)
-        lines = [_normalize_text(x) for x in text.splitlines() if _normalize_text(x)]
-
-        current_date = ""
-        for line in lines:
-            iso = _jp_date_to_iso(line)
-            if iso:
-                current_date = iso
-                continue
-
-            if ("日本" in line or "アメリカ" in line or "米国" in line) and re.search(r"\d{1,2}:\d{2}", line):
-                country = ""
-                if "日本" in line:
-                    country = "日本"
-                elif "アメリカ" in line or "米国" in line:
-                    country = "アメリカ"
-
-                if country not in TARGET_COUNTRIES:
-                    continue
-
-                t = _extract_time(line)
-                after_time = re.split(r"\d{1,2}:\d{2}", line, maxsplit=1)
-                event_name = after_time[1].strip() if len(after_time) > 1 else ""
-                if not event_name:
-                    continue
-
-                event = {
-                    "event_date_jst": current_date,
-                    "event_time_jst": t,
-                    "country": country,
-                    "event_name": event_name,
-                    "forecast": "",
-                    "actual": "",
-                    "previous": "",
-                    "importance_label": "",
-                    "event_status": "予定",
-                }
-
-                key = (
-                    event["event_date_jst"],
-                    event["event_time_jst"],
-                    event["country"],
-                    event["event_name"],
-                )
-                if key not in seen:
-                    seen.add(key)
-                    events.append(event)
 
     return events
 
