@@ -513,6 +513,9 @@ def split_events_for_mail(
             and e.get("event_status") == "予定"
         ):
             week_events.append(e)
+            
+        if e.get("importance_rank", 0) < 3:
+            continue
 
         event_name = str(e.get("event_name",""))
 
