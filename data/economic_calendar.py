@@ -62,9 +62,37 @@ def _normalize_text(text):
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
-def _importance_rank(label: str) -> int:
+def _importance_rank(
+    importance_label: str,
+    event_name: str = "",
+) -> int:
+
+    high_priority_keywords = [
+        "CPI",
+        "消費者物価指数",
+        "PCE",
+        "FOMC",
+        "政策金利",
+        "雇用統計",
+        "非農業部門雇用者数",
+        "NFP",
+        "失業率",
+        "GDP",
+    ]
+
+    if any(
+        k in event_name
+        for k in high_priority_keywords
+    ):
+        return 5
+
     try:
-        m = re.search(r"([0-9.]+)", label)
+
+        m = re.search(
+            r"([0-9.]+)",
+            str(importance_label),
+        )
+
         if not m:
             return 1
 
@@ -147,6 +175,7 @@ def _parse_minkabu_calendar(html):
         print(
             f"[TABLE DEBUG] "
             f"table_idx={table_idx}"
+            f"rows={len(rows)}"
         )
 
         # ==================================
@@ -343,6 +372,7 @@ def _parse_minkabu_calendar(html):
                         "importance_rank":
                             _importance_rank(
                                 importance
+                                event_name,
                             ),
                         "event_status":
                             event_status,
@@ -472,7 +502,10 @@ def split_events_for_mail(
         if event_date == yesterday:
             yesterday_events.append(e)
 
-        if event_date == today:
+        if (
+            event_date == today
+            and e.get("event_status") == "予定"
+        ):
             today_events.append(e)
 
         if (
@@ -489,8 +522,11 @@ def split_events_for_mail(
         )
 
         if any(
-            keyword in event_name
-            for keyword in SUPER_IMPORTANT_KEYWORDS
+            e.get("event_status") == "予定"
+            and any(
+                keyword in event_name
+                for keyword in SUPER_IMPORTANT_KEYWORDS
+            )
         ):
             super_important_events.append(e)
 
