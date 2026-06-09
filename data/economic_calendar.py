@@ -497,6 +497,9 @@ def split_events_for_mail(
         if not dt:
             continue
 
+         if e.get("importance_rank", 0) < 3:
+            continue
+
         event_date = dt.date()
 
         if event_date == yesterday:
