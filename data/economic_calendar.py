@@ -150,7 +150,15 @@ def _parse_minkabu_calendar(html):
             f"current_date={current_date}"
         )
 
-        for tag in table.find_all_previous():
+        for tag in table.find_previous():
+            
+            print(
+                "[PREV TAG]",
+                table_idx,
+                prev.name if prev else None,
+                prev.get_text(" ", strip=True)[:200]
+                if prev else None
+            )
             
             txt = _normalize_text(
                 tag.get_text(" ", strip=True)
@@ -281,6 +289,12 @@ def _parse_minkabu_calendar(html):
                     previous,
                     forecast,
                     actual,
+                )
+                print(
+                    "[EVENT]",
+                    current_date,
+                    event_time,
+                    event_name
                 )
                 events.append(
                     {
