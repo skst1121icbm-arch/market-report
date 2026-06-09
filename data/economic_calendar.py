@@ -146,83 +146,90 @@ def _parse_minkabu_calendar(html):
 
         print(
             f"[TABLE DEBUG] "
-            f"table_idx={table_idx} "
-            f"current_date={current_date}"
+            f"table_idx={table_idx}"
         )
 
-        header = table.find_previous(
-            ["h1", "h2", "h3", "h4", "th"]
-        )        
+        # ==================================
+        # 日付取得
+        # ==================================
 
-        if header:
+        current_date = None
+
+        for prev in table.find_all_previous():
+
             txt = _normalize_text(
-                header.get_text(" ", strip=True)
+                prev.get_text(" ", strip=True)
             )
 
-            print(f"[HEADER] {txt}")
+            if not txt:
+                continue
 
-            if date_pattern.search(txt):
+            m = re.search(
+                r"(\d{4})年(\d{1,2})月(\d{1,2})日",
+                txt
+            )
+
+            if m:
+
                 current_date = _jp_date_to_iso(txt)
 
                 print(
-                    f"[DATE FOUND] "
-                    f"{txt} -> {current_date}"
+                    "[DATE FOUND]",
+                    table_idx,
+                    current_date,
+                    txt[:150]
                 )
-                
-       for tag in table.find_previous():
 
-          print(
-            "[PREV TAG]",
-            table_idx,
-            prev.name if prev else None,
-            prev.get_text(" ", strip=True)[:200]
-            if prev else None
-        )
+                break
 
-        txt = _normalize_text(
-            row.get_text(" ", strip=True)
-        )
-
-        if date_pattern.search(txt):
-            current_date = _jp_date_to_iso(txt)
+        if not current_date:
 
             print(
-                f"[DATE ROW] {txt} -> {current_date}"
+                "[WARN] date not found",
+                table_idx
             )
 
             continue
-           
-            
+
+        # ==================================
+        # 行解析
+        # ==================================
+
         for tr in rows:
 
             cols = [
                 _normalize_text(
                     x.get_text(" ", strip=True)
                 )
-                for x in tr.find_all(["td", "th"])
+                for x in tr.find_all(
+                    ["td", "th"]
+                )
             ]
 
             if len(cols) < 5:
                 continue
 
-            if len(events) < 5:
-                print("[DEBUG] row:", cols)
+            print("[DEBUG] row:", cols)
 
             time_idx = None
 
             for i, v in enumerate(cols):
 
                 if (
-                    re.match(r"^\d{2}:\d{2}$", v)
+                    re.match(
+                        r"^\d{2}:\d{2}$",
+                        v
+                    )
                     or v == "未定"
                 ):
                     time_idx = i
                     break
-
+    
             if time_idx is None:
                 continue
 
             try:
+
                 event_name_raw = (
                     cols[time_idx + 2]
                     if len(cols) > time_idx + 2
@@ -231,33 +238,39 @@ def _parse_minkabu_calendar(html):
 
                 country = None
 
-                if event_name_raw.startswith("アメリカ・"):
+                if event_name_raw.startswith(
+                    "アメリカ・"
+                ):
                     country = "US"
                     event_name = event_name_raw.replace(
                         "アメリカ・",
                         "",
-                        1
+                        1,
                     )
 
-                elif event_name_raw.startswith("米国・"):
+                elif event_name_raw.startswith(
+                    "米国・"
+                ):
                     country = "US"
                     event_name = event_name_raw.replace(
                         "米国・",
                         "",
-                        1
+                        1,
                     )
 
-                elif event_name_raw.startswith("日本・"):
+                elif event_name_raw.startswith(
+                    "日本・"
+                ):
                     country = "JP"
                     event_name = event_name_raw.replace(
                         "日本・",
                         "",
-                        1
+                        1,
                     )
 
                 else:
                     continue
-                    
+
                 event_time = (
                     cols[time_idx]
                     if len(cols) > time_idx
@@ -288,9 +301,6 @@ def _parse_minkabu_calendar(html):
                     else ""
                 )
 
-                if not current_date:
-                    continue
-
                 event_status = (
                     "予定"
                     if actual in NO_RESULT_VALUES
@@ -303,30 +313,32 @@ def _parse_minkabu_calendar(html):
                     event_time,
                     country,
                     event_name,
-                    previous,
-                    forecast,
-                    actual,
                 )
-                print(
-                    "[EVENT]",
-                    current_date,
-                    event_time,
-                    event_name
-                )
+
                 events.append(
                     {
-                        "event_date_jst": current_date,
-                        "event_time_jst": event_time,
-                        "country": country,
-                        "event_name": event_name,
-                        "forecast": forecast,
-                        "actual": actual,
-                        "previous": previous,
-                        "importance_label": importance,
-                        "importance_rank": _importance_rank(
-                            importance
-                        ),
-                        "event_status": event_status,
+                        "event_date_jst":
+                            current_date,
+                        "event_time_jst":
+                            event_time,
+                        "country":
+                            country,
+                        "event_name":
+                            event_name,
+                        "forecast":
+                            forecast,
+                        "actual":
+                            actual,
+                        "previous":
+                            previous,
+                        "importance_label":
+                            importance,
+                        "importance_rank":
+                            _importance_rank(
+                                importance
+                            ),
+                        "event_status":
+                            event_status,
                     }
                 )
 
@@ -336,7 +348,7 @@ def _parse_minkabu_calendar(html):
                     "[WARN] parse row error:",
                     e,
                 )
-
+    
     dedup = {}
 
     for e in events:
