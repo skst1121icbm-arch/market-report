@@ -371,7 +371,7 @@ def _parse_minkabu_calendar(html):
                             importance,
                         "importance_rank":
                             _importance_rank(
-                                importance
+                                importance,
                                 event_name,
                             ),
                         "event_status":
