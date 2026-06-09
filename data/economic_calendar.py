@@ -150,30 +150,47 @@ def _parse_minkabu_calendar(html):
             f"current_date={current_date}"
         )
 
-        for tag in table.find_previous():
-            
-            print(
-                "[PREV TAG]",
-                table_idx,
-                prev.name if prev else None,
-                prev.get_text(" ", strip=True)[:200]
-                if prev else None
-            )
-            
+        header = table.find_previous(
+            ["h1", "h2", "h3", "h4", "th"]
+        )        
+
+        if header:
             txt = _normalize_text(
-                tag.get_text(" ", strip=True)
+                header.get_text(" ", strip=True)
             )
 
-            print(f"[TEXT] {txt}")
+            print(f"[HEADER] {txt}")
 
             if date_pattern.search(txt):
                 current_date = _jp_date_to_iso(txt)
-                
+
                 print(
-                    f"[DATE FOUND] {txt} -> {current_date}"
+                    f"[DATE FOUND] "
+                    f"{txt} -> {current_date}"
                 )
                 
-                break
+       for tag in table.find_previous():
+
+          print(
+            "[PREV TAG]",
+            table_idx,
+            prev.name if prev else None,
+            prev.get_text(" ", strip=True)[:200]
+            if prev else None
+        )
+
+        txt = _normalize_text(
+            row.get_text(" ", strip=True)
+        )
+
+        if date_pattern.search(txt):
+            current_date = _jp_date_to_iso(txt)
+
+            print(
+                f"[DATE ROW] {txt} -> {current_date}"
+            )
+
+            continue
            
             
         for tr in rows:
