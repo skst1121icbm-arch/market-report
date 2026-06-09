@@ -514,14 +514,9 @@ def split_events_for_mail(
         ):
             week_events.append(e)
 
-        event_name = str(
-            e.get(
-                "event_name",
-                "",
-            )
-        )
+        event_name = str(e.get("event_name",""))
 
-        if any(
+        if (
             e.get("event_status") == "予定"
             and any(
                 keyword in event_name
