@@ -315,6 +315,13 @@ def _parse_minkabu_calendar(html):
                     event_name,
                 )
 
+                print(
+                    "[CHECK DATE]",
+                    current_date,
+                    event_time,
+                    event_name
+                )
+                
                 events.append(
                     {
                         "event_date_jst":
