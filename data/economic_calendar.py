@@ -471,15 +471,16 @@ def split_events_for_mail(
     events,
     now_dt,
 ):
-    print("[NOW]", now_dt)
-    print("[NOW JST]", now)
-    print("[TODAY]", today)
-    print("[YESTERDAY]", yesterday)
     
     now = now_dt.astimezone(JST)
 
     today = now.date()
     yesterday = today - timedelta(days=1)
+
+    print("[NOW]", now_dt)
+    print("[NOW JST]", now)
+    print("[TODAY]", today)
+    print("[YESTERDAY]", yesterday)
 
     start_of_week = (
         today - timedelta(days=today.weekday())
@@ -560,4 +561,21 @@ def split_events_for_mail(
             x["country"],
         )
     )
-    
+    print(
+        "[INFO]",
+        f"yesterday={len(yesterday_events)}",
+        f"today={len(today_events)}",
+        f"week={len(week_events)}",
+        f"super={len(super_important_events)}",
+    )
+
+    return {
+        "super_important_events":
+            super_important_events,
+        "yesterday_events":
+            yesterday_events,
+        "today_events":
+            today_events,
+        "week_events":
+            week_events,
+    }
