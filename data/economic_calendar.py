@@ -484,9 +484,19 @@ def split_events_for_mail(
         start_of_week + timedelta(days=6)
     )
     
+    print("now_dt =", now_dt)
+    print("now_dt tz =", now_dt.tzinfo)
+    print("now =", now)
+
+    if events:
+        print(
+            "first event =",
+            events[0].get("event_date_jst"),
+            events[0].get("event_name"),
+        )
+        
     print("DEBUG today =", today)
     print("DEBUG yesterday =", yesterday)
-
 
     yesterday_events = []
     today_events = []
