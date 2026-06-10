@@ -503,6 +503,16 @@ def split_events_for_mail(
             continue
 
         event_date = dt.date()
+        
+        print(
+            "[EVENT DATE]",
+            event_date,
+            "today=",
+            today,
+            "yesterday=",
+            yesterday,
+            e["event_name"]
+        )
 
         # 昨日
         if (
