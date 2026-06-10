@@ -476,12 +476,6 @@ def split_events_for_mail(
 
     today = now.date()
     yesterday = today - timedelta(days=1)
-
-    print("[NOW]", now_dt)
-    print("[NOW JST]", now)
-    print("[TODAY]", today)
-    print("[YESTERDAY]", yesterday)
-
     start_of_week = (
         today - timedelta(days=today.weekday())
     )
@@ -489,6 +483,10 @@ def split_events_for_mail(
     end_of_week = (
         start_of_week + timedelta(days=6)
     )
+    
+    print("DEBUG today =", today)
+    print("DEBUG yesterday =", yesterday)
+
 
     yesterday_events = []
     today_events = []
@@ -501,18 +499,14 @@ def split_events_for_mail(
 
         if not dt:
             continue
-
-        event_date = dt.date()
-        
+            
         print(
-            "[EVENT DATE]",
-            event_date,
-            "today=",
-            today,
-            "yesterday=",
-            yesterday,
-            e["event_name"]
+            "EVENT DATE =",
+            dt.date(),
+            e.get("event_name")
         )
+        
+        event_date = dt.date()
 
         # 昨日
         if (
