@@ -471,7 +471,11 @@ def split_events_for_mail(
     events,
     now_dt,
 ):
-
+    print("[NOW]", now_dt)
+    print("[NOW JST]", now)
+    print("[TODAY]", today)
+    print("[YESTERDAY]", yesterday)
+    
     now = now_dt.astimezone(JST)
 
     today = now.date()
@@ -497,55 +501,63 @@ def split_events_for_mail(
         if not dt:
             continue
 
-        if e.get("importance_rank", 0) < 3:
-            continue
-
         event_date = dt.date()
 
-        if event_date == yesterday:
+        # 昨日
+        if (
+            event_date == yesterday
+            and e.get("importance_rank", 0) >= 3
+        ):
             yesterday_events.append(e)
 
+        # 今日
         if (
             event_date == today
-            and e.get("event_status") == "予定"
+            and e.get("importance_rank", 0) >= 3
         ):
             today_events.append(e)
 
+        # 今週
         if (
             today < event_date <= end_of_week
             and e.get("event_status") == "予定"
+            and e.get("importance_rank", 0) >= 3
         ):
             week_events.append(e)
-            
-        if e.get("importance_rank", 0) < 3:
-            continue
 
-        event_name = str(e.get("event_name",""))
+        # 超重要イベント
+        event_name = str(
+            e.get("event_name", "")
+        )
 
         if (
-            e.get("event_status") == "予定"
+            event_date >= today
             and any(
                 keyword in event_name
                 for keyword in SUPER_IMPORTANT_KEYWORDS
             )
         ):
             super_important_events.append(e)
-
-    print(
-        "[INFO]",
-        f"yesterday={len(yesterday_events)}",
-        f"today={len(today_events)}",
-        f"week={len(week_events)}",
-        f"super={len(super_important_events)}",
+            
+    yesterday_events.sort(
+        key=lambda x: (
+            x["event_time_jst"],
+            x["country"],
+        )
     )
 
-    return {
-        "super_important_events":
-            super_important_events,
-        "yesterday_events":
-            yesterday_events,
-        "today_events":
-            today_events,
-        "week_events":
-            week_events,
-    }
+    today_events.sort(
+        key=lambda x: (
+            x["event_time_jst"],
+            x["country"],
+        )
+    )
+
+    week_events.sort(
+        key=lambda x: (
+            x["event_date_jst"],
+            x["event_time_jst"],
+            x["country"],
+        )
+    )
+    
