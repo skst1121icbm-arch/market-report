@@ -128,22 +128,26 @@ def _jp_date_to_iso(text):
 
 def _fetch_html():
 
-    res = requests.get(
-        MINKABU_URL,
+    today = datetime.now(JST).strftime(
+        "%Y-%m-%d"
+    )
+
+    url = (
+        "https://fx.minkabu.jp/indicators"
+        f"?date={today}&days=2"
+    )
+
+    print("[FETCH]", url)
+
+    r = requests.get(
+        url,
         headers=HEADERS,
         timeout=30,
     )
 
-    res.raise_for_status()
+    r.raise_for_status()
 
-    html = res.text
-
-    print(
-        "[DEBUG] html length:",
-        len(html),
-    )
-
-    return html
+    return r.text
 
 
 def _parse_minkabu_calendar(html):
