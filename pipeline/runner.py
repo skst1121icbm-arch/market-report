@@ -2,6 +2,7 @@ from config.settings import MARKET_SYMBOLS, SECTOR_ETFS, LATEST_HTML_FILE
 
 from data.market_data import download_ohlc
 from data.economic_calendar import fetch_minkabu_economic_events, split_events_for_mail
+from data.policy_news import fetch_policy_news
 from data.fred_api import fetch_us_rate_extras
 from data.market_internals import (
     fetch_market_breadth,
@@ -68,7 +69,10 @@ def run():
         events,
         now
     )
-
+ 
+    policy_news_payload = fetch_policy_news(now_dt)
+    print("[DEBUG] policy_news_payload =", policy_news_payload)
+    
     print(
         "[DEBUG] macro payload =",
         macro_payload
@@ -162,6 +166,7 @@ def run():
         etf_flows,
         options_data,
         rate_extras,
+        policy_news_payload=policy_news_payload,
     )
 
     with open(LATEST_HTML_FILE, "w", encoding="utf-8") as f:
