@@ -191,3 +191,10 @@ def split_events_for_mail(events, now_dt):
         "today_events": today_events,
         "week_events": week_events,
     }
+    
+    #=========================
+    # backward compatibility
+    # =========================
+    # 旧:Minkabu関数との互換維持
+    fetch_minkabu_economic_events = fetch_economic_events
+
