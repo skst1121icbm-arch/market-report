@@ -4,7 +4,7 @@ import requests
 
 JST = ZoneInfo("Asia/Tokyo")
 
-API_URL = "https://api.tradingeconomics.com/calendar?c=guest:guest"
+API_URL = "https://api.tradingeconomics.com/calendar/country/all?c=guest:guest"
 
 # =========================
 # 日本語マッピング
