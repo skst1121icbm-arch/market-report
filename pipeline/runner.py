@@ -70,13 +70,20 @@ def run():
         now
     )
  
-    policy_news_payload = fetch_policy_news(now_dt)
-    print("[DEBUG] policy_news_payload =", policy_news_payload)
-    
+    policy_news_payload = fetch_policy_news(now)[:3]    
+    if policy_news_payload:
+        print("[DEBUG] policy_news_payload =", policy_news_payload)
+    else:
+        print("[INFO] policy news: no events")
+
     print(
-        "[DEBUG] macro payload =",
-        macro_payload
+        "[INFO]",
+        f"yesterday={len(macro_payload.get('yesterday_events', []))}",
+        f"today={len(macro_payload.get('today_events', []))}",
+        f"week={len(macro_payload.get('week_events', []))}",
+        f"super={len(macro_payload.get('super_important_events', []))}",
     )
+
 
     recent_events = macro_payload["yesterday_events"]
     upcoming_events = macro_payload["today_events"]
