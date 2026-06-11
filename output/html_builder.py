@@ -330,6 +330,53 @@ def _table_econ(title_icon, title, events):
         + _table_close()
     )
 
+def _table_policy_news(title_icon, title, items):
+    """
+    15 / 20 / 35 / 20 / 10 固定
+    区分 / 発言者 / タイトル / 市場観点 / 日付
+    """
+    body = []
+
+    if not items:
+        body.append("  \n")
+        body.append(_td("該当なし（前日の政策・要人発言なし）", None, "center", colspan=5))
+        body.append("  \n")
+    else:
+        for x in items:
+            source = escape(_safe(x.get("source")))
+            speaker = escape(_safe(x.get("speaker")))
+            title_text = escape(_safe(x.get("title")))
+            relevance = escape(_safe(x.get("market_relevance")))
+            date_jst = escape(_safe(x.get("date_jst")))
+
+            # URL がある場合だけリンク化
+            url = _safe(x.get("url"))
+            if url not in ["", "N/A"]:
+                title_html = f'<a href="{escape(url)}" target="_blank">{title_text}</a>'
+            else:
+                title_html = title_text
+
+            body.append("  \n")
+            body.append(_td(source, 15, "center"))
+            body.append(_td(speaker, 20, "left"))
+            body.append(_td(title_html, 35, "left"))
+            body.append(_td(relevance, 20, "left"))
+            body.append(_td(date_jst, 10, "center"))
+            body.append("  \n")
+
+    return (
+        _section_title(title_icon, title)
+        + _table_open()
+        + "  \n"
+        + _th("区分", 15)
+        + _th("発言者", 20, "left")
+        + _th("タイトル", 35, "left")
+        + _th("市場観点", 20, "left")
+        + _th("日付", 10)
+        + "  \n"
+        + "".join(body)
+        + _table_close()
+    )
 
 # =========================
 # MAIN
@@ -348,6 +395,7 @@ def build_html(
     etf_flows,
     options_data,
     rate_extras,
+    policy_news_payload=None,
 ):
     today = now_jst().strftime("%Y-%m-%d")
 
@@ -519,6 +567,13 @@ def build_html(
         "経済指標（昨日）",
         macro_payload.get("yesterday_events", []),
     )
+    # ===== 前日の政策・要人発言サマリー =====
+    
+    policy_news_section = _table_policy_news(
+        "🗞️",
+        "前日の政策・要人発言サマリー",
+        policy_news_payload or [],
+    )
 
     # ===== まとめ =====
     summary_section = f"""
@@ -549,7 +604,7 @@ def build_html(
 {breadth_table}
 {breadth_comment}
 {sector_table}
-
+{policy_news_section}
 {econ_super_important}
 {econ_today}
 {econ_week}
