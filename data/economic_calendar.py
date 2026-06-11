@@ -153,10 +153,39 @@ def _is_super_event(raw_name: str) -> bool:
     return any(k.lower() in name for k in SUPER_IMPORTANT_KEYWORDS)
 
 
+def _fallback_importance_rank_from_event_name(raw_name: str, currency: str) -> int:
+    """
+    Forex Factory の impact が class からうまく拾えない場合の救済。
+    super 対象は 3、それ以外でも主要マクロは 2 に持ち上げる。
+    """
+    name = _safe(raw_name).lower()
+
+    if _is_super_event(raw_name):
+        return 3
+
+    medium_keywords = [
+        "claims",
+        "consumer confidence",
+        "retail sales",
+        "trade balance",
+        "current account",
+        "industrial production",
+        "manufacturing pmi",
+        "services pmi",
+        "bank lending",
+        "gdp",
+    ]
+
+    if any(k in name for k in medium_keywords):
+        return 2
+
+    return 1
+
+
 def _importance_rank_from_td(td) -> int:
     """
-    Forex Factory の impact は class に high/medium/low が入ることが多いので、
-    class / title / aria-label / text の順で拾う。
+    Forex Factory の impact は class / aria / title / html 上に high / medium / low が
+    埋まっているケースがあるので複数経路で検出。
     """
     if td is None:
         return 1
@@ -247,8 +276,9 @@ def _extract_row_data(tr):
         "importance_rank": 1,
     }
 
-    # classベース
     impact_td = None
+
+    # classベースで優先抽出
     for td in tds:
         cls = " ".join(td.get("class", [])).lower()
         txt = _normalize_text(td.get_text(" ", strip=True))
@@ -271,7 +301,7 @@ def _extract_row_data(tr):
     if impact_td is not None:
         row["importance_rank"] = _importance_rank_from_td(impact_td)
 
-    # fallback: classが弱いときは位置ベース
+    # fallback: 位置ベースで救済
     texts = [_normalize_text(td.get_text(" ", strip=True)) for td in tds]
 
     if not row["time"]:
@@ -298,10 +328,17 @@ def _extract_row_data(tr):
             row["event"] = txt
             break
 
+    # 末尾3列を actual/forecast/previous とみなす救済
     if not row["actual"] and len(texts) >= 3:
         row["actual"] = texts[-3]
         row["forecast"] = texts[-2]
         row["previous"] = texts[-1]
+
+    # impact を class で拾えなかった場合の補完
+    if row["importance_rank"] <= 1 and row["event"] and row["currency"]:
+        row["importance_rank"] = _fallback_importance_rank_from_event_name(
+            row["event"], row["currency"]
+        )
 
     return row
 
@@ -310,7 +347,7 @@ def _fetch_html():
     session = requests.Session()
     session.headers.update(HEADERS)
 
-    # best effort
+    # best effort: JST 表示に寄せる
     session.cookies.set("fftimezone", "Asia/Tokyo")
     session.cookies.set("timezone", "Asia/Tokyo")
 
@@ -360,6 +397,11 @@ def _parse_forex_factory_calendar(html: str):
             continue
 
         importance_rank = int(row.get("importance_rank", 1))
+
+        # class で拾えない impact をイベント名で最終補完
+        if importance_rank < MIN_IMPORTANCE_RANK:
+            importance_rank = _fallback_importance_rank_from_event_name(raw_name, currency)
+
         if importance_rank < MIN_IMPORTANCE_RANK:
             continue
 
@@ -434,7 +476,13 @@ def _end_of_current_month(now_dt):
     year = now_dt.year
     month = now_dt.month
     last_day = calendar.monthrange(year, month)[1]
-    return now_dt.replace(day=last_day, hour=23, minute=59, second=59, microsecond=0)
+    return now_dt.replace(
+        day=last_day,
+        hour=23,
+        minute=59,
+        second=59,
+        microsecond=0
+    )
 
 
 def split_events_for_mail(events, now_dt):
@@ -471,7 +519,7 @@ def split_events_for_mail(events, now_dt):
         importance_rank = int(e.get("importance_rank", 0))
         is_super = bool(e.get("is_super", False))
 
-        # ここでも safety filter
+        # safety filter
         if e.get("currency") not in TARGET_CURRENCIES:
             continue
         if importance_rank < MIN_IMPORTANCE_RANK:
@@ -479,7 +527,7 @@ def split_events_for_mail(events, now_dt):
 
         # 1) 重要経済指標(super only)
         # 当月内の super を月末まで残す
-        if is_super and event_date.year == now.year and event_date.month == now.month:
+        if is_super and event_date.year == now.year and event_date.month == now.month and event_date <= month_end:
             super_important_events.append(e)
 
         # 2) 昨日
