@@ -151,15 +151,17 @@ def _clean_summary_text(text: str) -> str:
 # IMPORTANCE
 # =========================
 def _stars(e):
+    rank = int(e.get("importance_rank", 1))
+    is_super = e.get("is_super", False)
 
-    rank = int(
-        e.get("importance_rank", 1)
-    )
-
-    return (
-        "★" * rank
-        + "☆" * (5 - rank)
-    )
+    if is_super:
+        return "🔥★★★"
+    elif rank == 3:
+        return "★★★"
+    elif rank == 2:
+        return "★★"
+    else:
+        return "★"
 
 
 def _is_high_importance(e):
