@@ -69,8 +69,12 @@ def run():
         events,
         now
     )
- 
-    policy_news_payload = fetch_policy_news(now)[:3]    
+
+    # ✅ 直近3日の FRB / BOJ 発言を取得
+    policy_news_payload = fetch_policy_news(now)[:5]    
+
+    print("[DEBUG] policy_news_count =", len(policy_news_payload))
+    
     if policy_news_payload:
         print("[DEBUG] policy_news_payload =", policy_news_payload)
     else:
