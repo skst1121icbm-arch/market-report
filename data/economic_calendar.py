@@ -35,24 +35,38 @@ NO_RESULT_VALUES = {
 # 表示対象通貨
 TARGET_CURRENCIES = {"USD", "JPY"}
 
-# importance >= 2 だけ使う
-MIN_IMPORTANCE_RANK = 2
+# today / yesterday / week で残す最低重要度（3段階正規化後）
+MIN_VISIBLE_IMPORTANCE = 2
 
-# super 扱いにする指標（重要経済指標セクション用）
+# SUPER 限定キーワード
+# CPI / Core CPI / PPI / 金利 / 雇用統計 のみ
 SUPER_IMPORTANT_KEYWORDS = [
+    # CPI / Core CPI
     "CPI",
     "Core CPI",
+
+    # PPI
     "PPI",
     "Core PPI",
+
+    # 金利
     "Interest Rate",
     "Rate Decision",
+    "Main Refinancing Rate",
+    "Deposit Facility Rate",
+    "Monetary Policy Statement",
+    "Rate Statement",
     "Policy Statement",
-    "Monetary Policy",
+
+    # 雇用統計
     "Non-Farm",
-    "Employment",
-    "Jobless Claims",
+    "Employment Change",
+    "ADP Non-Farm Employment Change",
     "Unemployment Rate",
     "Average Hourly Earnings",
+    "Jobless Claims",
+    "Initial Jobless Claims",
+    "Continuing Jobless Claims",
 ]
 
 CURRENCY_TO_COUNTRY_JP = {
@@ -61,36 +75,45 @@ CURRENCY_TO_COUNTRY_JP = {
 }
 
 EVENT_NAME_MAP = {
+    # 金利
     "Interest Rate Decision": "政策金利",
     "Main Refinancing Rate": "主要政策金利",
     "Deposit Facility Rate": "中銀預金金利",
     "Monetary Policy Statement": "金融政策声明",
     "Rate Statement": "政策声明",
+    "Policy Statement": "政策声明",
     "Press Conference": "記者会見",
-    "CPI y/y": "消費者物価指数前年比",
-    "CPI m/m": "消費者物価指数前月比",
+
+    # CPI / PPI
     "Core CPI y/y": "コアCPI前年比",
     "Core CPI m/m": "コアCPI前月比",
-    "PPI y/y": "生産者物価指数前年比",
-    "PPI m/m": "生産者物価指数前月比",
+    "CPI y/y": "消費者物価指数前年比",
+    "CPI m/m": "消費者物価指数前月比",
     "Core PPI y/y": "コアPPI前年比",
     "Core PPI m/m": "コアPPI前月比",
+    "PPI y/y": "生産者物価指数前年比",
+    "PPI m/m": "生産者物価指数前月比",
     "PPI": "生産者物価指数",
     "CPI": "消費者物価指数",
+
+    # 雇用
+    "ADP Non-Farm Employment Change": "ADP雇用統計",
+    "Non-Farm Employment Change": "非農業部門雇用者数変化",
+    "Non Farm Employment Change": "非農業部門雇用者数変化",
+    "Employment Change": "雇用者数変化",
+    "Unemployment Rate": "失業率",
+    "Average Hourly Earnings y/y": "平均時給前年比",
+    "Average Hourly Earnings m/m": "平均時給前月比",
+    "Initial Jobless Claims": "新規失業保険申請件数",
+    "Continuing Jobless Claims": "継続失業保険申請件数",
+    "Unemployment Claims": "失業保険申請件数",
+    "Jobless Claims": "失業保険申請件数",
+
+    # その他（中重要度候補）
     "Final GDP q/q": "GDP前期比改定値",
     "GDP q/q": "GDP前期比",
     "GDP y/y": "GDP前年比",
     "Final GDP Price Index y/y": "GDPデフレーター前年比改定値",
-    "Unemployment Claims": "失業保険申請件数",
-    "Initial Jobless Claims": "新規失業保険申請件数",
-    "Continuing Jobless Claims": "継続失業保険申請件数",
-    "Non-Farm Employment Change": "非農業部門雇用者数変化",
-    "Non Farm Employment Change": "非農業部門雇用者数変化",
-    "ADP Non-Farm Employment Change": "ADP雇用統計",
-    "Average Hourly Earnings m/m": "平均時給前月比",
-    "Average Hourly Earnings y/y": "平均時給前年比",
-    "Unemployment Rate": "失業率",
-    "Employment Change": "雇用者数変化",
     "Retail Sales m/m": "小売売上高前月比",
     "Retail Sales y/y": "小売売上高前年比",
     "Trade Balance": "貿易収支",
@@ -142,9 +165,10 @@ def _translate_country(currency_code: str) -> str:
 def _translate_event_name(name: str) -> str:
     if not name:
         return ""
-    for k, v in EVENT_NAME_MAP.items():
+    # 長いキーを先に当てる
+    for k in sorted(EVENT_NAME_MAP.keys(), key=len, reverse=True):
         if k.lower() in name.lower():
-            return v
+            return EVENT_NAME_MAP[k]
     return name
 
 
@@ -153,16 +177,39 @@ def _is_super_event(raw_name: str) -> bool:
     return any(k.lower() in name for k in SUPER_IMPORTANT_KEYWORDS)
 
 
+def _normalize_importance(rank: int) -> int:
+    """
+    元の importance を 3段階に正規化
+    3 = 高
+    2 = 中
+    1 = 低
+    """
+    try:
+        r = int(rank)
+    except Exception:
+        r = 1
+
+    if r >= 3:
+        return 3
+    elif r == 2:
+        return 2
+    else:
+        return 1
+
+
 def _fallback_importance_rank_from_event_name(raw_name: str, currency: str) -> int:
     """
-    Forex Factory の impact が class からうまく拾えない場合の救済。
-    super 対象は 3、それ以外でも主要マクロは 2 に持ち上げる。
+    class から impact が拾えない場合のベース重要度（元スコア）
+    ここでは 1〜3 を返す前提で、
+    後段で _normalize_importance に通して最終 3段階にする。
     """
     name = _safe(raw_name).lower()
 
+    # SUPER 対象は高
     if _is_super_event(raw_name):
         return 3
 
+    # today/yesterday/week に残したい中重要度候補
     medium_keywords = [
         "claims",
         "consumer confidence",
@@ -184,8 +231,8 @@ def _fallback_importance_rank_from_event_name(raw_name: str, currency: str) -> i
 
 def _importance_rank_from_td(td) -> int:
     """
-    Forex Factory の impact は class / aria / title / html 上に high / medium / low が
-    埋まっているケースがあるので複数経路で検出。
+    Forex Factory の impact を class / title / aria / html から抽出
+    戻り値は元スコア（1〜3想定）
     """
     if td is None:
         return 1
@@ -301,7 +348,7 @@ def _extract_row_data(tr):
     if impact_td is not None:
         row["importance_rank"] = _importance_rank_from_td(impact_td)
 
-    # fallback: 位置ベースで救済
+    # 位置ベース fallback
     texts = [_normalize_text(td.get_text(" ", strip=True)) for td in tds]
 
     if not row["time"]:
@@ -328,13 +375,13 @@ def _extract_row_data(tr):
             row["event"] = txt
             break
 
-    # 末尾3列を actual/forecast/previous とみなす救済
+    # 末尾3列救済
     if not row["actual"] and len(texts) >= 3:
         row["actual"] = texts[-3]
         row["forecast"] = texts[-2]
         row["previous"] = texts[-1]
 
-    # impact を class で拾えなかった場合の補完
+    # impact 補完
     if row["importance_rank"] <= 1 and row["event"] and row["currency"]:
         row["importance_rank"] = _fallback_importance_rank_from_event_name(
             row["event"], row["currency"]
@@ -347,13 +394,14 @@ def _fetch_html():
     session = requests.Session()
     session.headers.update(HEADERS)
 
-    # best effort: JST 表示に寄せる
+    # best effort で JST 表示寄せ
     session.cookies.set("fftimezone", "Asia/Tokyo")
     session.cookies.set("timezone", "Asia/Tokyo")
 
     res = session.get(FOREX_FACTORY_URL, timeout=30)
     print("[DEBUG] forex factory status:", res.status_code)
     res.raise_for_status()
+
     html = res.text
     print("[DEBUG] forex factory html length:", len(html))
     return html
@@ -396,18 +444,24 @@ def _parse_forex_factory_calendar(html: str):
         if not current_date_iso:
             continue
 
-        importance_rank = int(row.get("importance_rank", 1))
+        raw_rank = int(row.get("importance_rank", 1))
 
-        # class で拾えない impact をイベント名で最終補完
-        if importance_rank < MIN_IMPORTANCE_RANK:
-            importance_rank = _fallback_importance_rank_from_event_name(raw_name, currency)
+        # 取り切れない場合はイベント名から補完
+        if raw_rank < 2:
+            raw_rank = _fallback_importance_rank_from_event_name(raw_name, currency)
 
-        if importance_rank < MIN_IMPORTANCE_RANK:
+        # 3段階へ正規化
+        importance_rank = _normalize_importance(raw_rank)
+
+        # today / yesterday / week 用には 2以上のみ採用
+        if importance_rank < MIN_VISIBLE_IMPORTANCE:
             continue
 
         actual = _safe(row.get("actual"))
         forecast = _safe(row.get("forecast"))
         previous = _safe(row.get("previous"))
+
+        is_super = (_is_super_event(raw_name) and importance_rank == 3)
 
         event = {
             "event_date_jst": current_date_iso,
@@ -420,9 +474,9 @@ def _parse_forex_factory_calendar(html: str):
             "actual": actual,
             "previous": previous,
             "importance_label": str(importance_rank),
-            "importance_rank": importance_rank,
+            "importance_rank": importance_rank,  # ここは3段階後の値
             "event_status": "予定" if actual in NO_RESULT_VALUES else "結果",
-            "is_super": _is_super_event(raw_name),
+            "is_super": is_super,
         }
 
         events.append(event)
@@ -481,21 +535,22 @@ def _end_of_current_month(now_dt):
         hour=23,
         minute=59,
         second=59,
-        microsecond=0
+        microsecond=0,
     )
 
 
 def split_events_for_mail(events, now_dt):
     """
-    期待する出力:
+    出力:
     - super_important_events:
-        当月の super のみ。過去分も将来分も月末まで残す。
+        当月の SUPER のみ。月末まで残す。
     - yesterday_events:
-        昨日の重要指標。結果付きで当日中表示。
+        昨日の重要指標（importance >= 2）。結果付きで当日中表示。
     - today_events:
-        今日の重要指標。予定/結果どちらも表示（結果は発表後に actual が入る）
+        今日の重要指標（importance >= 2）。予定/結果どちらも表示。
     - week_events:
-        今日以降〜今週末の upcoming 重要指標のみ。発表済みになったら消える。
+        今日より後〜今週末の upcoming 重要指標（importance >= 2）のみ。
+        発表済みになったら消える。
     """
     now = now_dt.astimezone(JST)
     today = now.date()
@@ -522,31 +577,35 @@ def split_events_for_mail(events, now_dt):
         # safety filter
         if e.get("currency") not in TARGET_CURRENCIES:
             continue
-        if importance_rank < MIN_IMPORTANCE_RANK:
-            continue
 
-        # 1) 重要経済指標(super only)
-        # 当月内の super を月末まで残す
+        # ------------------------
+        # ① SUPER（3のみ）
+        # ------------------------
         if is_super and event_date.year == now.year and event_date.month == now.month and event_date <= month_end:
             super_important_events.append(e)
 
-        # 2) 昨日
-        # 昨日のイベントを、現在日付が変わるまで表示
-        if event_date == yesterday:
+        # ------------------------
+        # ② 昨日（2以上）
+        # ------------------------
+        if event_date == yesterday and importance_rank >= 2:
             yesterday_events.append(e)
 
-        # 3) 本日
-        # 今日のイベントは予定/結果ともに表示。結果は取得でき次第 actual が入る
-        if event_date == today:
+        # ------------------------
+        # ③ 本日（2以上）
+        # ------------------------
+        if event_date == today and importance_rank >= 2:
             today_events.append(e)
 
-        # 4) 今週
-        # 今日より後〜今週末の upcoming のみ
-        # 発表済み（結果あり）は表示しない
-        if today < event_date <= end_of_week and event_status == "予定":
+        # ------------------------
+        # ④ 今週（2以上 + 未発表のみ）
+        # ------------------------
+        if (
+            today < event_date <= end_of_week
+            and event_status == "予定"
+            and importance_rank >= 2
+        ):
             week_events.append(e)
 
-    # ソート
     super_important_events.sort(key=lambda x: (x["event_date_jst"], x["event_time_jst"], x["currency"]))
     yesterday_events.sort(key=lambda x: (x["event_time_jst"], x["currency"]))
     today_events.sort(key=lambda x: (x["event_time_jst"], x["currency"]))
