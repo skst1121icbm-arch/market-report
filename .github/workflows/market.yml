@@ -3,7 +3,7 @@ name: Daily Market AI (FRED)
 on:
   schedule:
     # JST 06:07 / 06:10
-    - cron: '7 09 * * *'
+    - cron: '5 15 * * *'
    
   workflow_dispatch:
 
